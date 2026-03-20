@@ -18,7 +18,8 @@ const allowedOrigins = [
   "http://localhost:5000",      // Local development (same host)
   "http://127.0.0.1:3000",
   "http://127.0.0.1:5000",
-  process.env.FRONTEND_URL,     // Production frontend URL (set in .env)
+  "https://bintievents.vercel.app",     // Production frontend (Vercel)
+  process.env.FRONTEND_URL,     // Additional URL from environment variable
 ].filter(Boolean); // Remove undefined values
 
 const corsOptions = {
