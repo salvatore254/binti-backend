@@ -273,6 +273,10 @@ Binti Events Team
             <span class="detail-label">Phone:</span>
             <span class="detail-value">${booking.phone}</span>
           </div>
+          ${booking.mpesaPhone && booking.mpesaPhone !== booking.phone ? `<div class="detail-row">
+            <span class="detail-label">M-Pesa Phone:</span>
+            <span class="detail-value"><strong>${booking.mpesaPhone}</strong></span>
+          </div>` : ''}
           <div class="detail-row">
             <span class="detail-label">Email:</span>
             <span class="detail-value">${booking.email}</span>
@@ -383,6 +387,10 @@ Binti Events Team
             <span class="detail-label">Phone:</span>
             <span class="detail-value">${booking.phone}</span>
           </div>
+          ${booking.mpesaPhone && booking.mpesaPhone !== booking.phone ? `<div class="detail-row">
+            <span class="detail-label">M-Pesa Phone:</span>
+            <span class="detail-value"><strong>${booking.mpesaPhone}</strong></span>
+          </div>` : ''}
           <div class="detail-row">
             <span class="detail-label">Email:</span>
             <span class="detail-value">${booking.email}</span>

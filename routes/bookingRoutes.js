@@ -165,7 +165,7 @@ router.post("/confirm", async (req, res) => {
     const {
       fullname, phone, email, venue,
       tentType, tentSize, lighting, transport, siteVisit, decor,
-      location, sections, termsAccepted, paymentMethod
+      location, sections, termsAccepted, paymentMethod, mpesaPhone
     } = req.body;
 
     // Validate required fields
@@ -253,6 +253,7 @@ router.post("/confirm", async (req, res) => {
       id: bookingId,
       fullname,
       phone,
+      mpesaPhone,
       email,
       tentType,
       tentSize,

@@ -8,6 +8,7 @@ class Booking {
     this.id = data.id;
     this.fullname = data.fullname;
     this.phone = data.phone;
+    this.mpesaPhone = data.mpesaPhone || data.phone; // Use contact phone as fallback
     this.email = data.email;
     this.tentType = data.tentType;
     this.tentSize = data.tentSize;
@@ -42,6 +43,7 @@ class Booking {
       id: this.id,
       fullname: this.fullname,
       phone: this.phone,
+      mpesaPhone: this.mpesaPhone,
       email: this.email,
       tentType: this.tentType,
       tentSize: this.tentSize,
