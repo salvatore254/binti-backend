@@ -21,6 +21,15 @@ class Booking {
     this.status = data.status || 'pending'; // pending, paid, completed, cancelled
     this.paymentMethod = data.paymentMethod; // mpesa, pesapal
     this.transactionId = data.transactionId;
+    
+    // Terms and Conditions Acceptance
+    this.termsAccepted = data.termsAccepted || false;
+    this.termsAcceptedAt = data.termsAcceptedAt || null;
+    
+    // Payment Breakdown (80% deposit, 20% balance)
+    this.depositAmount = Math.round(data.totalAmount * 0.8);
+    this.remainingAmount = Math.round(data.totalAmount * 0.2);
+    
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
   }
@@ -44,10 +53,14 @@ class Booking {
       },
       venue: this.venue,
       totalAmount: this.totalAmount,
+      depositAmount: this.depositAmount,
+      remainingAmount: this.remainingAmount,
       breakdown: this.breakdown,
       status: this.status,
       paymentMethod: this.paymentMethod,
       transactionId: this.transactionId,
+      termsAccepted: this.termsAccepted,
+      termsAcceptedAt: this.termsAcceptedAt,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };
