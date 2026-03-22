@@ -16,7 +16,7 @@ const { v4: uuidv4 } = require("uuid");
  */
 router.post("/calculate", (req, res) => {
   try {
-    const { tentType, tentSize, lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, location, sections } = req.body;
+    const { tentType, tentSize, lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, decor, location, sections } = req.body;
 
     let total = 0;
     const breakdown = {};
