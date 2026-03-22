@@ -18,6 +18,20 @@ router.post("/calculate", (req, res) => {
   try {
     const { tentType, tentSize, lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, decor, location, sections } = req.body;
 
+    console.log("📊 /calculate endpoint called with:", {
+      tentType,
+      tentSize,
+      lighting,
+      transport,
+      pasound,
+      dancefloor,
+      stagepodium,
+      welcomesigns,
+      decor,
+      location,
+      sections
+    });
+
     let total = 0;
     const breakdown = {};
 
@@ -86,6 +100,10 @@ router.post("/calculate", (req, res) => {
     if (welcomesigns === "yes" || welcomesigns === true) {
       total += 3000;
       breakdown.welcomesigns = 3000;
+    }
+
+    if (decor === "yes" || decor === true) {
+      breakdown.decor = "Upon Inquiry";
     }
 
     // TRANSPORT: Use TransportService for dynamic calculation
@@ -181,6 +199,27 @@ router.post("/confirm", async (req, res) => {
       location, sections, termsAccepted, paymentMethod, mpesaPhone
     } = req.body;
 
+    console.log("✅ /confirm endpoint called with:", {
+      fullname,
+      phone,
+      email,
+      venue,
+      tentType,
+      tentSize,
+      lighting,
+      transport,
+      decor,
+      pasound,
+      dancefloor,
+      stagepodium,
+      welcomesigns,
+      location,
+      sections,
+      termsAccepted,
+      paymentMethod,
+      mpesaPhone
+    });
+
     // Validate required fields
     if (!fullname || !phone || !email || !venue || !tentType) {
       return res.status(400).json({
@@ -266,6 +305,10 @@ router.post("/confirm", async (req, res) => {
     if (welcomesigns === "yes" || welcomesigns === true) {
       total += 3000;
       breakdown.welcomesigns = 3000;
+    }
+
+    if (decor === "yes" || decor === true) {
+      breakdown.decor = "Upon Inquiry";
     }
 
     // SITE VISIT: Removed - users now request via contact form
