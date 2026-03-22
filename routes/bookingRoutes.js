@@ -8,14 +8,15 @@ const { v4: uuidv4 } = require("uuid");
 
 /**
  * POST /api/bookings/calculate
- * Body: { tentType, tentSize, lighting, transport, siteVisit, location }
+ * Body: { tentType, tentSize, lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, location }
  * Returns: { success: true, total, breakdown: {...} }
  * 
  * Now includes dynamic transport cost calculation based on location
+ * Add-ons: Ambient Lighting (12K), PA Sound (8K), Dance Floor (10K), Stage & Podium (15K), Welcome Signs (3K)
  */
 router.post("/calculate", (req, res) => {
   try {
-    const { tentType, tentSize, lighting, transport, siteVisit, location, sections } = req.body;
+    const { tentType, tentSize, lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, location, sections } = req.body;
 
     let total = 0;
     const breakdown = {};
@@ -25,9 +26,14 @@ router.post("/calculate", (req, res) => {
     // - A-frame: 40,000 per section (front-end sends sections or tentType 'a-frame' implies 1)
     // - B-line: 30,000 fixed
     // - Cheese tent: 15,000 fixed
-    // - Lighting: 20,000
+    // - Add-ons:
+    //   * Ambient Lighting: 12,000
+    //   * PA Sound System: 8,000
+    //   * Dance Floor: 10,000
+    //   * Stage & Podium: 15,000
+    //   * Welcome Signs: 3,000
     // - Transport: Dynamic based on location (Nairobi zones or outside Nairobi)
-    // - Site visit (Nairobi): 1,500
+    // Note: Site Visit is now handled via contact form, not as booking add-on
 
     if (tentType === "stretch") {
       if (!tentSize || typeof tentSize !== "string") {
@@ -57,8 +63,29 @@ router.post("/calculate", (req, res) => {
     }
 
     if (lighting === "yes" || lighting === true) {
-      total += 20000;
-      breakdown.lighting = 20000;
+      total += 12000;
+      breakdown.lighting = 12000;
+    }
+
+    // Add-ons pricing
+    if (pasound === "yes" || pasound === true) {
+      total += 8000;
+      breakdown.pasound = 8000;
+    }
+
+    if (dancefloor === "yes" || dancefloor === true) {
+      total += 10000;
+      breakdown.dancefloor = 10000;
+    }
+
+    if (stagepodium === "yes" || stagepodium === true) {
+      total += 15000;
+      breakdown.stagepodium = 15000;
+    }
+
+    if (welcomesigns === "yes" || welcomesigns === true) {
+      total += 3000;
+      breakdown.welcomesigns = 3000;
     }
 
     // TRANSPORT: Use TransportService for dynamic calculation
@@ -77,22 +104,8 @@ router.post("/calculate", (req, res) => {
       };
     }
 
-    // SITE VISIT
-    if (siteVisit === "yes" || siteVisit === true) {
-      if (!location || typeof location !== "string") {
-        return res.status(400).json({ success: false, message: "Location is required to calculate site visit cost." });
-      }
-
-      // Check if location is in Nairobi
-      const isNairobiLocation = !TransportService.isOutsideNairobi(location);
-      if (isNairobiLocation) {
-        total += 1500;
-        breakdown.siteVisit = { cost: 1500, area: "Nairobi" };
-      } else {
-        // Outside Nairobi site visits require arrangements
-        breakdown.siteVisit = { cost: 0, note: "Outside Nairobi - requires arrangements (will contact customer)" };
-      }
-    }
+    // SITE VISIT: Removed - users now request via contact form
+    // (No longer calculated in booking price)
 
     res.json({ success: true, total, breakdown });
   } catch (err) {
@@ -152,8 +165,8 @@ router.post("/identify-zone", (req, res) => {
  * 
  * Body: {
  *   fullname, phone, email, venue,
- *   tentType, tentSize, lighting, transport, siteVisit, decor,
- *   location (for transport/sitevisit calculation),
+ *   tentType, tentSize, lighting, transport, decor, pasound, dancefloor, stagepodium, welcomesigns,
+ *   location (for transport calculation),
  *   sections (for a-frame),
  *   termsAccepted (boolean), paymentMethod (mpesa/pesapal)
  * }
@@ -164,7 +177,7 @@ router.post("/confirm", async (req, res) => {
   try {
     const {
       fullname, phone, email, venue,
-      tentType, tentSize, lighting, transport, siteVisit, decor,
+      tentType, tentSize, lighting, transport, decor, pasound, dancefloor, stagepodium, welcomesigns,
       location, sections, termsAccepted, paymentMethod, mpesaPhone
     } = req.body;
 
@@ -216,8 +229,8 @@ router.post("/confirm", async (req, res) => {
     }
 
     if (lighting === "yes" || lighting === true) {
-      total += 20000;
-      breakdown.lighting = 20000;
+      total += 12000;
+      breakdown.lighting = 12000;
     }
 
     if (transport === "yes" || transport === true) {
@@ -234,18 +247,29 @@ router.post("/confirm", async (req, res) => {
       };
     }
 
-    if (siteVisit === "yes" || siteVisit === true) {
-      if (!location || typeof location !== "string") {
-        return res.status(400).json({ success: false, message: "Location is required to calculate site visit cost." });
-      }
-      const isNairobiLocation = !TransportService.isOutsideNairobi(location);
-      if (isNairobiLocation) {
-        total += 1500;
-        breakdown.siteVisit = { cost: 1500, area: "Nairobi" };
-      } else {
-        breakdown.siteVisit = { cost: 0, note: "Outside Nairobi - requires arrangements (will contact customer)" };
-      }
+    // Add-ons pricing
+    if (pasound === "yes" || pasound === true) {
+      total += 8000;
+      breakdown.pasound = 8000;
     }
+
+    if (dancefloor === "yes" || dancefloor === true) {
+      total += 10000;
+      breakdown.dancefloor = 10000;
+    }
+
+    if (stagepodium === "yes" || stagepodium === true) {
+      total += 15000;
+      breakdown.stagepodium = 15000;
+    }
+
+    if (welcomesigns === "yes" || welcomesigns === true) {
+      total += 3000;
+      breakdown.welcomesigns = 3000;
+    }
+
+    // SITE VISIT: Removed - users now request via contact form
+    // (No longer calculated in booking price)
 
     // Create booking object
     const bookingId = uuidv4();
@@ -259,7 +283,10 @@ router.post("/confirm", async (req, res) => {
       tentSize,
       lighting: lighting === "yes" || lighting === true,
       transport: transport === "yes" || transport === true,
-      siteVisit: siteVisit === "yes" || siteVisit === true,
+      pasound: pasound === "yes" || pasound === true,
+      dancefloor: dancefloor === "yes" || dancefloor === true,
+      stagepodium: stagepodium === "yes" || stagepodium === true,
+      welcomesigns: welcomesigns === "yes" || welcomesigns === true,
       decor: decor === "yes" || decor === true,
       venue,
       totalAmount: total,

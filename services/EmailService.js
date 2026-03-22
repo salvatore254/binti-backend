@@ -103,8 +103,12 @@ BOOKING DETAILS:
 - Tent Type: ${booking.tentType}
 - Tent Size: ${booking.tentSize || 'N/A'}
 - Lighting: ${booking.lighting ? 'Yes' : 'No'}
+- PA Sound System: ${booking.pasound ? 'Yes' : 'No'}
+- Dance Floor: ${booking.dancefloor ? 'Yes' : 'No'}
+- Stage & Podium: ${booking.stagepodium ? 'Yes' : 'No'}
+- Welcome Signs: ${booking.welcomesigns ? 'Yes' : 'No'}
 - Transport: ${booking.transport ? 'Yes' : 'No'}
-- Site Visit: ${booking.siteVisit ? 'Yes' : 'No'}
+- Decor: ${booking.decor ? 'Yes' : 'No'}
 
 PRICING:
 - Total Amount: KES ${booking.totalAmount.toLocaleString()}
@@ -413,12 +417,28 @@ Binti Events Team
             <span class="detail-value">${booking.lighting ? '✓ Yes' : 'No'}</span>
           </div>
           <div class="detail-row">
+            <span class="detail-label">PA Sound System:</span>
+            <span class="detail-value">${booking.pasound ? '✓ Yes' : 'No'}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Dance Floor:</span>
+            <span class="detail-value">${booking.dancefloor ? '✓ Yes' : 'No'}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Stage & Podium:</span>
+            <span class="detail-value">${booking.stagepodium ? '✓ Yes' : 'No'}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Welcome Signs:</span>
+            <span class="detail-value">${booking.welcomesigns ? '✓ Yes' : 'No'}</span>
+          </div>
+          <div class="detail-row">
             <span class="detail-label">Transport:</span>
             <span class="detail-value">${booking.transport ? '✓ Yes' : 'No'}</span>
           </div>
           <div class="detail-row">
-            <span class="detail-label">Site Visit:</span>
-            <span class="detail-value">${booking.siteVisit ? '✓ Yes' : 'No'}</span>
+            <span class="detail-label">Decor:</span>
+            <span class="detail-value">${booking.decor ? '✓ Yes' : 'No'}</span>
           </div>
         </div>
 
@@ -525,8 +545,17 @@ Binti Events Team
     if (breakdown.transport?.cost > 0) {
       html += `<div class="detail-row"><span class="detail-label">Transport:</span><span class="detail-value">KES ${breakdown.transport.cost.toLocaleString()}</span></div>`;
     }
-    if (breakdown.siteVisit?.cost > 0) {
-      html += `<div class="detail-row"><span class="detail-label">Site Visit:</span><span class="detail-value">KES ${breakdown.siteVisit.cost.toLocaleString()}</span></div>`;
+    if (breakdown.pasound > 0) {
+      html += `<div class="detail-row"><span class="detail-label">PA Sound System:</span><span class="detail-value">KES ${breakdown.pasound.toLocaleString()}</span></div>`;
+    }
+    if (breakdown.dancefloor > 0) {
+      html += `<div class="detail-row"><span class="detail-label">Dance Floor:</span><span class="detail-value">KES ${breakdown.dancefloor.toLocaleString()}</span></div>`;
+    }
+    if (breakdown.stagepodium > 0) {
+      html += `<div class="detail-row"><span class="detail-label">Stage & Podium:</span><span class="detail-value">KES ${breakdown.stagepodium.toLocaleString()}</span></div>`;
+    }
+    if (breakdown.welcomesigns > 0) {
+      html += `<div class="detail-row"><span class="detail-label">Welcome Signs:</span><span class="detail-value">KES ${breakdown.welcomesigns.toLocaleString()}</span></div>`;
     }
 
     return html || '<p>Basic package</p>';
