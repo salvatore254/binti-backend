@@ -14,10 +14,12 @@ const PORT = process.env.PORT || 5000;
 
 // CORS configuration for separate frontend/backend hosting
 const allowedOrigins = [
-  "http://localhost:3000",      // Local development frontend
-  "http://localhost:5000",      // Local development (same host)
+  "http://localhost:3000",      // Local development frontend (port 3000)
+  "http://localhost:5000",      // Local development (same host as backend)
+  "http://localhost:5500",      // Live Server port
   "http://127.0.0.1:3000",
   "http://127.0.0.1:5000",
+  "http://127.0.0.1:5500",      // Live Server port (127.0.0.1 alias)
   "https://bintievents.vercel.app",     // Production frontend (Vercel)
   process.env.FRONTEND_URL,     // Additional URL from environment variable
 ].filter(Boolean); // Remove undefined values
@@ -53,5 +55,5 @@ app.get("/api/health", (req, res) => {
 
 // start
 app.listen(PORT, () => {
-  console.log(`🚀 Binti backend listening at http://localhost:${PORT}`);
+  console.log(` Binti backend listening at http://localhost:${PORT}`);
 });

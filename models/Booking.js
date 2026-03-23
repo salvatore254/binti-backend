@@ -17,6 +17,8 @@ class Booking {
     this.siteVisit = data.siteVisit || false;
     this.decor = data.decor || false;
     this.venue = data.venue;
+    this.eventDate = data.eventDate; // Event date (YYYY-MM-DD format)
+    this.setupTime = data.setupTime; // Setup time (HH:MM format)
     this.totalAmount = data.totalAmount;
     this.breakdown = data.breakdown; // JSON {tent, lighting, transport, siteVisit}
     this.status = data.status || 'pending'; // pending, paid, completed, cancelled
@@ -54,6 +56,8 @@ class Booking {
         decor: this.decor,
       },
       venue: this.venue,
+      eventDate: this.eventDate,
+      setupTime: this.setupTime,
       totalAmount: this.totalAmount,
       depositAmount: this.depositAmount,
       remainingAmount: this.remainingAmount,

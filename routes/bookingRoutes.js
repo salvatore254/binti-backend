@@ -8,72 +8,105 @@ const { v4: uuidv4 } = require("uuid");
 
 /**
  * POST /api/bookings/calculate
- * Body: { tentType, tentSize, lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, location }
- * Returns: { success: true, total, breakdown: {...} }
- * 
- * Now includes dynamic transport cost calculation based on location
- * Add-ons: Ambient Lighting (12K), PA Sound (8K), Dance Floor (10K), Stage & Podium (15K), Welcome Signs (3K)
+ * Handles two booking flows:
+ * 1. Package Flow: User selects a pre-designed package
+ * 2. Tent Flow: User selects individual tents with custom configurations
  */
 router.post("/calculate", (req, res) => {
   try {
-    const { tentType, tentSize, lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, decor, location, sections } = req.body;
+    const { 
+      bookingFlow, 
+      tentConfigs, 
+      packageName, 
+      packageBasePrice,
+      lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, decor, location, sections,
+      eventDate, setupTime 
+    } = req.body;
 
-    console.log("📊 /calculate endpoint called with:", {
-      tentType,
-      tentSize,
+    console.log("📊 /calculate endpoint called:", {
+      bookingFlow,
+      packageName,
+      packageBasePrice,
+      tentConfigsCount: tentConfigs ? tentConfigs.length : 0,
       lighting,
       transport,
-      pasound,
-      dancefloor,
-      stagepodium,
-      welcomesigns,
-      decor,
       location,
-      sections
+      eventDate,
+      setupTime
     });
 
     let total = 0;
     const breakdown = {};
 
-    // Pricing rules:
-    // - Stretch tents: 250 KES per m^2 (if size supplied as "22x15", calculate area)
-    // - A-frame: 40,000 per section (front-end sends sections or tentType 'a-frame' implies 1)
-    // - B-line: 30,000 fixed
-    // - Cheese tent: 15,000 fixed
-    // - Add-ons:
-    //   * Ambient Lighting: 12,000
-    //   * PA Sound System: 8,000
-    //   * Dance Floor: 10,000
-    //   * Stage & Podium: 15,000
-    //   * Welcome Signs: 3,000
-    // - Transport: Dynamic based on location (Nairobi zones or outside Nairobi)
-    // Note: Site Visit is now handled via contact form, not as booking add-on
+    // Handle Package Flow
+    if (bookingFlow === 'package') {
+      if (!packageBasePrice) {
+        return res.status(400).json({ success: false, message: "Invalid package pricing information." });
+      }
+      
+      total = packageBasePrice;
+      breakdown.package = { 
+        name: packageName || 'Selected Package', 
+        basePrice: packageBasePrice 
+      };
+      breakdown.tent = { 
+        type: 'package', 
+        cost: 0 // Included in package base price
+      };
+      
+      console.log("✅ Package flow - Base price:", packageBasePrice);
+    } 
+    // Handle Tent Flow
+    else if (bookingFlow === 'tent' || !bookingFlow) {
+      if (!tentConfigs || !Array.isArray(tentConfigs) || tentConfigs.length === 0) {
+        return res.status(400).json({ success: false, message: "At least one tent configuration is required." });
+      }
 
-    if (tentType === "stretch") {
-      if (!tentSize || typeof tentSize !== "string") {
-        return res.status(400).json({ success: false, message: "Missing or invalid tentSize for stretch tent." });
+      // Calculate tent pricing for each configuration
+      let tentTotal = 0;
+      const tentDetails = [];
+      
+      for (const config of tentConfigs) {
+        let configCost = 0;
+        
+        if (config.type === 'stretch') {
+          if (!config.size) {
+            return res.status(400).json({ success: false, message: "Stretch tent requires size specification." });
+          }
+          const parts = config.size.split('x').map(p => parseFloat(p));
+          if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
+            return res.status(400).json({ success: false, message: `Invalid stretch tent size: ${config.size}` });
+          }
+          const area = parts[0] * parts[1];
+          configCost = Math.round(area * 250);
+          tentDetails.push({ type: 'stretch', size: config.size, area, cost: configCost });
+        } 
+        else if (config.type === 'aframe' || config.type === 'a-frame') {
+          const sections_count = config.sections || 1;
+          configCost = 40000 * parseInt(sections_count);
+          tentDetails.push({ type: 'a-frame', sections: sections_count, cost: configCost });
+        } 
+        else if (config.type === 'bline' || config.type === 'b-line') {
+          configCost = 30000;
+          tentDetails.push({ type: 'b-line', cost: configCost });
+        } 
+        else if (config.type === 'cheese') {
+          configCost = 15000;
+          tentDetails.push({ type: 'cheese', color: config.color || 'white', cost: configCost });
+        }
+        
+        tentTotal += configCost;
       }
-      const parts = tentSize.split("x").map(p => parseFloat(p));
-      if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
-        return res.status(400).json({ success: false, message: "Invalid stretch tent size format. Use 'widthxheight' e.g. 22x15." });
-      }
-      const area = parts[0] * parts[1];
-      const tentCost = Math.round(area * 250);
-      total += tentCost;
-      breakdown.tent = { type: "stretch", size: tentSize, area: area, cost: tentCost };
-    } else if (tentType === "a-frame" || tentType === "aframe" || tentType === "a_frame") {
-      const sectionCount = sections ? parseInt(sections, 10) || 1 : 1;
-      const tentCost = 40000 * sectionCount;
-      total += tentCost;
-      breakdown.tent = { type: "a-frame", sections: sectionCount, cost: tentCost };
-    } else if (tentType === "b-line" || tentType === "bline") {
-      const tentCost = 30000;
-      total += tentCost;
-      breakdown.tent = { type: "b-line", cost: tentCost };
-    } else if (tentType === "cheese") {
-      const tentCost = 15000;
-      total += tentCost;
-      breakdown.tent = { type: "cheese", cost: tentCost };
+      
+      total += tentTotal;
+      breakdown.tent = { 
+        type: 'multi-config', 
+        configurations: tentDetails, 
+        cost: tentTotal,
+        count: tentConfigs.length
+      };
+      
+      console.log("✅ Tent flow - Total tent cost:", tentTotal, "Configs:", tentDetails.length);
     }
 
     if (lighting === "yes" || lighting === true) {
@@ -194,9 +227,13 @@ router.post("/identify-zone", (req, res) => {
 router.post("/confirm", async (req, res) => {
   try {
     const {
+      bookingFlow,
       fullname, phone, email, venue,
+      tentConfigs,
+      packageName, packageBasePrice,
       tentType, tentSize, lighting, transport, decor, pasound, dancefloor, stagepodium, welcomesigns,
-      location, sections, termsAccepted, paymentMethod, mpesaPhone
+      location, sections, termsAccepted, paymentMethod, mpesaPhone,
+      eventDate, setupTime
     } = req.body;
 
     console.log("✅ /confirm endpoint called with:", {
@@ -204,6 +241,8 @@ router.post("/confirm", async (req, res) => {
       phone,
       email,
       venue,
+      eventDate,
+      setupTime,
       tentType,
       tentSize,
       lighting,
@@ -332,6 +371,8 @@ router.post("/confirm", async (req, res) => {
       welcomesigns: welcomesigns === "yes" || welcomesigns === true,
       decor: decor === "yes" || decor === true,
       venue,
+      eventDate,
+      setupTime,
       totalAmount: total,
       breakdown,
       status: "pending",
