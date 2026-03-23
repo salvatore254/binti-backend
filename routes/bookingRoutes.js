@@ -37,32 +37,26 @@ router.post("/calculate", (req, res) => {
 
     let total = 0;
     const breakdown = {};
+    let hasPackage = packageBasePrice && packageBasePrice > 0;
+    let hasTents = tentConfigs && Array.isArray(tentConfigs) && tentConfigs.length > 0;
 
-    // Handle Package Flow
-    if (bookingFlow === 'package') {
-      if (!packageBasePrice) {
-        return res.status(400).json({ success: false, message: "Invalid package pricing information." });
-      }
-      
-      total = packageBasePrice;
+    // If neither package nor tents provided and it's explicitly tent flow, error
+    if (!hasPackage && !hasTents && bookingFlow === 'tent') {
+      return res.status(400).json({ success: false, message: "Please select either a package or add tent configurations." });
+    }
+
+    // Handle Package (if provided)
+    if (hasPackage) {
+      total += packageBasePrice;
       breakdown.package = { 
         name: packageName || 'Selected Package', 
         basePrice: packageBasePrice 
       };
-      breakdown.tent = { 
-        type: 'package', 
-        cost: 0 // Included in package base price
-      };
-      
-      console.log("✅ Package flow - Base price:", packageBasePrice);
-    } 
-    // Handle Tent Flow
-    else if (bookingFlow === 'tent' || !bookingFlow) {
-      if (!tentConfigs || !Array.isArray(tentConfigs) || tentConfigs.length === 0) {
-        return res.status(400).json({ success: false, message: "At least one tent configuration is required." });
-      }
+      console.log("✅ Package added - Base price:", packageBasePrice);
+    }
 
-      // Calculate tent pricing for each configuration
+    // Handle Tent Configurations (if provided - can be combined with package)
+    if (hasTents) {
       let tentTotal = 0;
       const tentDetails = [];
       
@@ -105,8 +99,10 @@ router.post("/calculate", (req, res) => {
         cost: tentTotal,
         count: tentConfigs.length
       };
-      
-      console.log("✅ Tent flow - Total tent cost:", tentTotal, "Configs:", tentDetails.length);
+      console.log("✅ Tents added - Total tent cost:", tentTotal, "Configs:", tentDetails.length);
+    } else if (hasPackage) {
+      // Package only, no tents
+      breakdown.tent = { type: 'package-included', cost: 0 };
     }
 
     if (lighting === "yes" || lighting === true) {
@@ -260,10 +256,22 @@ router.post("/confirm", async (req, res) => {
     });
 
     // Validate required fields
-    if (!fullname || !phone || !email || !venue || !tentType) {
+    const hasPackage = packageBasePrice && packageBasePrice > 0;
+    const hasTentConfig = tentConfigs && Array.isArray(tentConfigs) && tentConfigs.length > 0;
+    const hasOldTentType = tentType && tentType !== 'none';
+    
+    if (!fullname || !phone || !email || !venue) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields (fullname, phone, email, venue, tentType)."
+        message: "Missing required fields (fullname, phone, email, venue)."
+      });
+    }
+    
+    // Must have either package or tent configuration (or both)
+    if (!hasPackage && !hasTentConfig && !hasOldTentType) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select either a package or add tent configurations."
       });
     }
 
@@ -275,35 +283,121 @@ router.post("/confirm", async (req, res) => {
       });
     }
 
-    // Calculate pricing (same logic as /calculate endpoint)
+    // Calculate pricing (supports package, tents, or both)
     let total = 0;
     const breakdown = {};
-
-    if (tentType === "stretch") {
-      if (!tentSize || typeof tentSize !== "string") {
-        return res.status(400).json({ success: false, message: "Missing or invalid tentSize for stretch tent." });
+    let hasTentConfigs = tentConfigs && Array.isArray(tentConfigs) && tentConfigs.length > 0;
+    let hasOldTentFormat = tentType && (tentType !== 'none');
+    
+    // If using new multi-config system
+    if (hasTentConfigs) {
+      // Add package if provided
+      if (hasPackage) {
+        total += packageBasePrice;
+        breakdown.package = { 
+          name: packageName || 'Selected Package', 
+          basePrice: packageBasePrice 
+        };
       }
-      const parts = tentSize.split("x").map(p => parseFloat(p));
-      if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
-        return res.status(400).json({ success: false, message: "Invalid stretch tent size format. Use 'widthxheight' e.g. 22x15." });
+      
+      // Calculate all tent configurations
+      let tentTotal = 0;
+      const tentDetails = [];
+      
+      for (const config of tentConfigs) {
+        let configCost = 0;
+        
+        if (config.type === 'stretch') {
+          if (!config.size) {
+            return res.status(400).json({ success: false, message: "Stretch tent requires size specification." });
+          }
+          const parts = config.size.split('x').map(p => parseFloat(p));
+          if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
+            return res.status(400).json({ success: false, message: `Invalid stretch tent size: ${config.size}` });
+          }
+          const area = parts[0] * parts[1];
+          configCost = Math.round(area * 250);
+          tentDetails.push({ type: 'stretch', size: config.size, area, cost: configCost });
+        } 
+        else if (config.type === 'aframe' || config.type === 'a-frame') {
+          const sectionCount = config.sections || 1;
+          configCost = 40000 * parseInt(sectionCount);
+          tentDetails.push({ type: 'a-frame', sections: sectionCount, cost: configCost });
+        } 
+        else if (config.type === 'bline' || config.type === 'b-line') {
+          configCost = 30000;
+          tentDetails.push({ type: 'b-line', cost: configCost });
+        } 
+        else if (config.type === 'cheese') {
+          configCost = 15000;
+          tentDetails.push({ type: 'cheese', color: config.color || 'white', cost: configCost });
+        }
+        
+        tentTotal += configCost;
       }
-      const area = parts[0] * parts[1];
-      const tentCost = Math.round(area * 250);
-      total += tentCost;
-      breakdown.tent = { type: "stretch", size: tentSize, area: area, cost: tentCost };
-    } else if (tentType === "a-frame" || tentType === "aframe" || tentType === "a_frame") {
-      const sectionCount = sections ? parseInt(sections, 10) || 1 : 1;
-      const tentCost = 40000 * sectionCount;
-      total += tentCost;
-      breakdown.tent = { type: "a-frame", sections: sectionCount, cost: tentCost };
-    } else if (tentType === "b-line" || tentType === "bline") {
-      const tentCost = 30000;
-      total += tentCost;
-      breakdown.tent = { type: "b-line", cost: tentCost };
-    } else if (tentType === "cheese") {
-      const tentCost = 15000;
-      total += tentCost;
-      breakdown.tent = { type: "cheese", cost: tentCost };
+      
+      total += tentTotal;
+      breakdown.tent = { 
+        type: 'multi-config', 
+        configurations: tentDetails, 
+        cost: tentTotal,
+        count: tentConfigs.length
+      };
+    } 
+    // Fallback to old single-tent format (for backward compatibility)
+    else if (hasOldTentFormat) {
+      // Add package if provided
+      if (hasPackage) {
+        total += packageBasePrice;
+        breakdown.package = { 
+          name: packageName || 'Selected Package', 
+          basePrice: packageBasePrice 
+        };
+      }
+      
+      // Calculate single tent
+      if (tentType === "stretch") {
+        if (!tentSize || typeof tentSize !== "string") {
+          return res.status(400).json({ success: false, message: "Missing or invalid tentSize for stretch tent." });
+        }
+        const parts = tentSize.split("x").map(p => parseFloat(p));
+        if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
+          return res.status(400).json({ success: false, message: "Invalid stretch tent size format. Use 'widthxheight' e.g. 22x15." });
+        }
+        const area = parts[0] * parts[1];
+        const tentCost = Math.round(area * 250);
+        total += tentCost;
+        breakdown.tent = { type: "stretch", size: tentSize, area: area, cost: tentCost };
+      } else if (tentType === "a-frame" || tentType === "aframe" || tentType === "a_frame") {
+        const sectionCount = sections ? parseInt(sections, 10) || 1 : 1;
+        const tentCost = 40000 * sectionCount;
+        total += tentCost;
+        breakdown.tent = { type: "a-frame", sections: sectionCount, cost: tentCost };
+      } else if (tentType === "b-line" || tentType === "bline") {
+        const tentCost = 30000;
+        total += tentCost;
+        breakdown.tent = { type: "b-line", cost: tentCost };
+      } else if (tentType === "cheese") {
+        const tentCost = 15000;
+        total += tentCost;
+        breakdown.tent = { type: "cheese", cost: tentCost };
+      }
+    } 
+    // Package only
+    else if (hasPackage) {
+      total += packageBasePrice;
+      breakdown.package = { 
+        name: packageName || 'Selected Package', 
+        basePrice: packageBasePrice 
+      };
+      breakdown.tent = { type: "package-included", cost: 0 };
+    } 
+    // Neither package nor tents provided - error
+    else {
+      return res.status(400).json({
+        success: false,
+        message: "Please select either a package or add tent configurations."
+      });
     }
 
     if (lighting === "yes" || lighting === true) {
