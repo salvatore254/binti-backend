@@ -9,7 +9,7 @@ const Booking = require("../models/Booking");
 
 // Initialize M-Pesa service (production or sandbox based on NODE_ENV)
 const mpesaService = new MpesaService();
-const emailService = new EmailService();
+const emailService = EmailService; // Already instantiated in EmailService.js
 
 /**
  * In-memory cache for booking data
