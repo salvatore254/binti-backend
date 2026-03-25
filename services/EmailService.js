@@ -15,6 +15,11 @@ class EmailService {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      tls: {
+        // For development/staging environments, disable strict SSL verification
+        // Production should use proper certificates or OAuth2
+        rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false
+      }
     });
 
     this.adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER;
