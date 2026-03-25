@@ -77,15 +77,20 @@ Binti Events Team
    */
   async sendAdminNotification(booking, depositAmount) {
     try {
+      // Ensure values are available
+      const totalAmount = booking.totalAmount || 0;
+      const deposit = depositAmount || (Math.round(totalAmount * 0.8));
+      const remaining = totalAmount - deposit;
+      
       const mailOptions = {
         from: `"Binti Events System" <${process.env.EMAIL_USER}>`,
         to: this.adminEmail,
-        subject: `New Booking Received - ${booking.fullname} (Ref: ${booking.id})`,
-        html: this.getAdminNotificationTemplate(booking, depositAmount),
+        subject: `New Booking Received - ${booking.fullname} (Ref: ${booking._id || booking.id})`,
+        html: this.getAdminNotificationTemplate(booking, deposit),
         text: `
 NEW BOOKING NOTIFICATION
 
-Booking Reference: ${booking.id}
+Booking Reference: ${booking._id || booking.id}
 Date: ${new Date().toISOString()}
 
 CUSTOMER DETAILS:
@@ -95,9 +100,9 @@ CUSTOMER DETAILS:
 - Venue: ${booking.venue}
 
 BOOKING DETAILS:
-- Total Amount: KES ${booking.totalAmount.toLocaleString()}
-- Deposit Required (80%): KES ${depositAmount.toLocaleString()}
-- Remaining Balance (20%): KES ${(booking.totalAmount - depositAmount).toLocaleString()}
+- Total Amount: KES ${totalAmount.toLocaleString()}
+- Deposit Required (80%): KES ${deposit.toLocaleString()}
+- Remaining Balance (20%): KES ${remaining.toLocaleString()}
 
 Status: Awaiting Payment
         `,
@@ -155,27 +160,31 @@ ${message}
    */
   async sendPaymentConfirmation(booking, transactionId) {
     try {
+      const totalAmount = booking.totalAmount || 0;
+      const depositAmount = Math.round(totalAmount * 0.8);
+      const remainingAmount = totalAmount - depositAmount;
+      
       const mailOptions = {
         from: `"Binti Events" <${process.env.EMAIL_USER}>`,
         to: booking.email,
-        subject: `Payment Received - Booking Confirmed (Ref: ${booking.id})`,
+        subject: `Payment Received - Booking Confirmed (Ref: ${booking._id || booking.id})`,
         html: this.getPaymentConfirmationTemplate(booking, transactionId),
         text: `
 Payment Confirmation - Binti Events
 
-Dear ${booking.fullname},
+Dear ${booking.fullname || 'Valued Customer'},
 
 Your payment has been received and processed successfully!
 
 BOOKING DETAILS:
-- Booking Reference: ${booking.id}
-- Transaction ID: ${transactionId}
-- Venue: ${booking.venue}
+- Booking Reference: ${booking._id || booking.id}
+- Transaction ID: ${transactionId || 'N/A'}
+- Venue: ${booking.venue || 'N/A'}
 
 PAYMENT DETAILS:
-- Deposit Paid (80%): KES ${Math.round(booking.totalAmount * 0.8).toLocaleString()}
-- Remaining Balance (20%): KES ${Math.round(booking.totalAmount * 0.2).toLocaleString()}
-- Total Amount: KES ${booking.totalAmount.toLocaleString()}
+- Deposit Paid (80%): KES ${depositAmount.toLocaleString()}
+- Remaining Balance (20%): KES ${remainingAmount.toLocaleString()}
+- Total Amount: KES ${totalAmount.toLocaleString()}
 
 Best regards,
 Binti Events Team
@@ -195,6 +204,10 @@ Binti Events Team
    * HTML template for booking confirmation email
    */
   getBookingConfirmationTemplate(booking, depositAmount, remainingAmount) {
+    const totalAmount = booking.totalAmount || 0;
+    const deposit = depositAmount || Math.round(totalAmount * 0.8);
+    const remaining = remainingAmount || (totalAmount - deposit);
+    
     return `
     <!DOCTYPE html>
     <html>
@@ -218,26 +231,26 @@ Binti Events Team
           <h1>Booking Confirmation</h1>
         </div>
 
-        <p>Dear ${booking.fullname},</p>
+        <p>Dear ${booking.fullname || 'Valued Customer'},</p>
         <p>Your booking has been confirmed. Here are your details:</p>
 
         <div class="section">
-          <h2>Booking Reference: ${booking.id}</h2>
+          <h2>Booking Reference: ${booking._id || booking.id}</h2>
           <div class="detail-row">
             <span class="detail-label">Name:</span>
-            <span class="detail-value">${booking.fullname}</span>
+            <span class="detail-value">${booking.fullname || 'N/A'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Phone:</span>
-            <span class="detail-value">${booking.phone}</span>
+            <span class="detail-value">${booking.phone || 'N/A'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Email:</span>
-            <span class="detail-value">${booking.email}</span>
+            <span class="detail-value">${booking.email || 'N/A'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Venue:</span>
-            <span class="detail-value">${booking.venue}</span>
+            <span class="detail-value">${booking.venue || 'N/A'}</span>
           </div>
         </div>
 
@@ -245,16 +258,16 @@ Binti Events Team
           <h2>Payment Summary</h2>
           <div class="detail-row">
             <span class="detail-label">Total Amount:</span>
-            <span class="detail-value">KES ${booking.totalAmount.toLocaleString()}</span>
+            <span class="detail-value">KES ${totalAmount.toLocaleString()}</span>
           </div>
           <div class="highlight">
             <div class="detail-row">
               <span class="detail-label">Deposit Required (80%):</span>
-              <span class="detail-value">KES ${depositAmount.toLocaleString()}</span>
+              <span class="detail-value">KES ${deposit.toLocaleString()}</span>
             </div>
             <div class="detail-row" style="margin-top: 10px;">
               <span class="detail-label">Balance Due (20%):</span>
-              <span class="detail-value">KES ${remainingAmount.toLocaleString()}</span>
+              <span class="detail-value">KES ${remaining.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -272,6 +285,10 @@ Binti Events Team
    * HTML template for admin notification
    */
   getAdminNotificationTemplate(booking, depositAmount) {
+    const totalAmount = booking.totalAmount || 0;
+    const deposit = depositAmount || (Math.round(totalAmount * 0.8));
+    const remaining = totalAmount - deposit;
+    
     return `
     <!DOCTYPE html>
     <html>
@@ -291,22 +308,22 @@ Binti Events Team
       <div class="container">
         <div class="header">
           <h1>New Booking Received</h1>
-          <p>Booking Reference: <strong>${booking.id}</strong></p>
+          <p>Booking Reference: <strong>${booking._id || booking.id}</strong></p>
         </div>
 
         <div class="section">
           <h2>Customer Information</h2>
           <div class="detail-row">
             <span class="detail-label">Name:</span>
-            <span class="detail-value">${booking.fullname}</span>
+            <span class="detail-value">${booking.fullname || 'N/A'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Phone:</span>
-            <span class="detail-value">${booking.phone}</span>
+            <span class="detail-value">${booking.phone || 'N/A'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Email:</span>
-            <span class="detail-value">${booking.email}</span>
+            <span class="detail-value">${booking.email || 'N/A'}</span>
           </div>
         </div>
 
@@ -314,15 +331,19 @@ Binti Events Team
           <h2>Event Details</h2>
           <div class="detail-row">
             <span class="detail-label">Venue:</span>
-            <span class="detail-value">${booking.venue}</span>
+            <span class="detail-value">${booking.venue || 'N/A'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Total Amount:</span>
-            <span class="detail-value">KES ${booking.totalAmount.toLocaleString()}</span>
+            <span class="detail-value">KES ${totalAmount.toLocaleString()}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Deposit (80%):</span>
-            <span class="detail-value">KES ${depositAmount.toLocaleString()}</span>
+            <span class="detail-value">KES ${deposit.toLocaleString()}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Remaining (20%):</span>
+            <span class="detail-value">KES ${remaining.toLocaleString()}</span>
           </div>
         </div>
 

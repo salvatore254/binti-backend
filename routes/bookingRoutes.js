@@ -495,24 +495,20 @@ router.post("/confirm", async (req, res) => {
     console.log(`   Deposit (80%): KES ${Math.round(total * 0.8)}`);
     console.log(`   Sending confirmation emails...`);
     
-    // TODO: Email service disabled temporarily due to Gmail authentication issues
-    // Re-enable after configuring Gmail App Password or alternative email service
-    /*
+    // Send emails asynchronously (non-blocking)
     (async () => {
       try {
         const EmailService = require("../services/EmailService");
-        const customerEmailResult = await EmailService().sendBookingConfirmation(booking);
-        const adminEmailResult = await EmailService().sendAdminNotification(booking, booking.depositAmount);
-        console.log(`   Customer email sent: ${customerEmailResult.success}`);
-        console.log(`   Admin email sent: ${adminEmailResult.success}`);
+        const emailService = EmailService();
+        const customerEmailResult = await emailService.sendBookingConfirmation(booking);
+        const adminEmailResult = await emailService.sendAdminNotification(booking, booking.depositAmount);
+        console.log(`   ✅ Customer email sent to ${booking.email}`);
+        console.log(`   ✅ Admin email sent to ${process.env.ADMIN_EMAIL}`);
       } catch (emailErr) {
-        console.warn('Email service unavailable:', emailErr.message);
+        console.warn('⚠️ Email service unavailable:', emailErr.message);
         console.warn('Booking was created successfully but confirmation emails could not be sent.');
       }
     })();
-    */
-    
-    console.log(`   Email notifications disabled (temporarily)`);
 
     // Return booking confirmation immediately (don't wait for emails)
     res.json({
