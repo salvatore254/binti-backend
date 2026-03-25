@@ -103,6 +103,25 @@ const mpesaCallback = async (req, res, next) => {
       });
 
       logger.info(`M-Pesa Payment Success: ${reference} from ${phone} - KES ${amount}`);
+
+      // Update booking in MongoDB with payment confirmation
+      const Booking = query('Booking');
+      const booking = await Booking.findOneAndUpdate(
+        { mpesaPhone: phone.toString() },
+        {
+          status: 'paid',
+          paymentMethod: 'mpesa',
+          transactionId: reference,
+          updatedAt: new Date(),
+        },
+        { new: true }
+      );
+
+      if (booking) {
+        logger.info(`✅ Booking ${booking._id} updated to paid status via M-Pesa`);
+      } else {
+        logger.warn(`⚠️ No booking found for M-Pesa phone: ${phone}`);
+      }
     } else {
       logger.warn(`M-Pesa Payment Failed: ${ResultDesc}`);
     }
@@ -125,11 +144,27 @@ const pesapalCallback = async (req, res, next) => {
 
     logger.info(`Pesapal callback received: order=${order_tracking_id}, transaction=${pesapal_transaction_tracking_id}`);
 
-    // In production, verify the transaction status with Pesapal API
-    // For now, update booking to paid status if we have a transaction ID
+    // Update booking with payment confirmation if we have a transaction ID
     if (pesapal_transaction_tracking_id) {
-      const status = 'paid';
-      logger.info(`Pesapal Payment Success: ${order_tracking_id}`);
+      const Booking = query('Booking');
+      const booking = await Booking.findByIdAndUpdate(
+        order_tracking_id,
+        {
+          status: 'paid',
+          paymentMethod: 'pesapal',
+          transactionId: pesapal_transaction_tracking_id,
+          updatedAt: new Date(),
+        },
+        { new: true }
+      );
+
+      if (booking) {
+        logger.info(`✅ Booking ${booking._id} updated to paid status via Pesapal`);
+      } else {
+        logger.warn(`⚠️ No booking found with ID: ${order_tracking_id}`);
+      }
+    } else {
+      logger.warn('Pesapal callback missing transaction ID');
     }
 
     res.status(200).json({ success: true });
