@@ -11,7 +11,8 @@ const Booking = require("../models/Booking");
 // Initialize payment services (production or sandbox based on NODE_ENV)
 const mpesaService = new MpesaService();
 const pesapalService = new PesapalService();
-const emailService = EmailService; // Already instantiated in EmailService.js
+// Get email service instance lazily when needed
+const getEmailService = () => EmailService();
 
 /**
  * In-memory cache for booking data
@@ -240,7 +241,7 @@ router.post("/pesapal-callback", async (req, res) => {
           // Send confirmation email
           try {
             console.log("[PESAPAL CALLBACK] Sending confirmation email to", cachedBooking.email);
-            const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, confirmationData);
+            const emailResult = await getEmailService().sendPaymentConfirmation(cachedBooking, confirmationData);
             
             if (emailResult.success) {
               console.log("[PESAPAL CALLBACK] ✉️ Confirmation email sent successfully");

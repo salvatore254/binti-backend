@@ -478,8 +478,8 @@ router.post("/confirm", async (req, res) => {
     });
 
     // Send confirmation emails
-    const customerEmailResult = await EmailService.sendBookingConfirmation(booking);
-    const adminEmailResult = await EmailService.sendAdminNotification(booking, booking.depositAmount);
+    const customerEmailResult = await EmailService().sendBookingConfirmation(booking);
+    const adminEmailResult = await EmailService().sendAdminNotification(booking, booking.depositAmount);
 
     console.log("✅ Booking confirmed:");
     console.log(`   Booking ID: ${bookingId}`);

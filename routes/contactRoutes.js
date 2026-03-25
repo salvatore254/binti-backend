@@ -12,7 +12,7 @@ router.post("/", async (req, res) => {
     }
 
     // Send email using EmailService
-    const result = await EmailService.sendContactMessage(name, email, phone, message, subject);
+    const result = await EmailService().sendContactMessage(name, email, phone, message, subject);
     
     if (result.success) {
       return res.json({ success: true, message: "Message sent successfully.", messageId: result.messageId });
