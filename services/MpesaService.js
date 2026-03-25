@@ -58,9 +58,10 @@ class MpesaService {
       
       const response = await axios({
         method: 'GET',
-        url: this.oauthUrl,
+        url: `${this.oauthUrl}?grant_type=client_credentials`,
         headers: {
-          Authorization: `Basic ${auth}`
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json'
         },
         timeout: 10000
       });
