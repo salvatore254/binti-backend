@@ -91,10 +91,12 @@ router.post("/pesapal", async (req, res) => {
 
     // Cache booking data for confirmation email later
     const bookingData = {
-      fullName: `${firstName} ${lastName}`,
+      id: orderRef,
+      fullname: firstName + ' ' + lastName,
       email: email,
       phone: phone || '',
-      amount: amount,
+      venue: '',
+      totalAmount: amount,
       orderRef: orderRef,
       paymentMethod: 'pesapal',
       timestamp: new Date().toISOString()
@@ -170,14 +172,15 @@ router.post("/mpesa", async (req, res) => {
     // Cache booking data for confirmation email later
     // This data comes from the frontend and includes customer & event details
     const bookingData = {
-      fullName: req.body.fullName || req.body.fullname || 'Guest',
+      id: accountRef,
+      fullname: req.body.fullName || req.body.fullname || 'Guest',
       email: req.body.email || '',
       phone: req.body.phone || '',
       venue: req.body.venue || '',
       eventDate: req.body.eventDate || '',
       setupTime: req.body.setupTime || '',
       tentType: req.body.tentType || req.body.bookingType || 'Package + Tent',
-      amount: amount,
+      totalAmount: amount,
       mpesaPhone: phone,
       accountRef: accountRef,
       timestamp: new Date().toISOString()
@@ -235,7 +238,7 @@ router.post("/pesapal-callback", async (req, res) => {
     const cachedBooking = bookingCache[validation.orderTrackingId];
     
     if (cachedBooking) {
-      console.log("[PESAPAL CALLBACK] Found cached booking data for", cachedBooking.fullName);
+      console.log("[PESAPAL CALLBACK] Found cached booking data for", cachedBooking.fullname);
       
       // Check payment status from Pesapal
       try {
@@ -258,7 +261,8 @@ router.post("/pesapal-callback", async (req, res) => {
           // Send confirmation email
           try {
             console.log("[PESAPAL CALLBACK] Sending confirmation email to", cachedBooking.email);
-            const emailResult = await getEmailService().sendPaymentConfirmation(cachedBooking, confirmationData);
+            const emailService = getEmailService();
+            const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, validation.orderTrackingId);
             
             if (emailResult.success) {
               console.log("[PESAPAL CALLBACK] ✉️ Confirmation email sent successfully");
@@ -324,7 +328,7 @@ router.post("/mpesa-callback", async (req, res) => {
       const cachedBooking = bookingCache[callbackData.accountRef];
       
       if (cachedBooking) {
-        console.log("[MPESA CALLBACK] Found cached booking data for", cachedBooking.fullName);
+        console.log("[MPESA CALLBACK] Found cached booking data for", cachedBooking.fullname);
         
         // Prepare confirmation email data
         const confirmationData = {
@@ -337,7 +341,8 @@ router.post("/mpesa-callback", async (req, res) => {
         // Send confirmation email
         try {
           console.log("[MPESA CALLBACK] Sending confirmation email to", cachedBooking.email);
-          const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, confirmationData);
+          const emailService = getEmailService();
+          const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, callbackData.mpesaReceiptNumber);
           
           if (emailResult.success) {
             console.log("[MPESA CALLBACK] ✉️ Confirmation email sent successfully (ID:", emailResult.messageId, ")");
