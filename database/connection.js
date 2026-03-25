@@ -1,29 +1,39 @@
 /**
  * Database Connection
- * Establishes and manages database connections
+ * Establishes and manages PostgreSQL database connections using Knex.js
  */
 
+const knex = require('knex');
 const config = require('../config/environment');
 const logger = require('../utils/logger');
+const databaseConfig = require('../config/database');
 
-let dbConnection = null;
+let db = null;
 
 /**
  * Initialize database connection
- * Currently a placeholder for future database integration
+ * Uses Knex.js for PostgreSQL connection pooling
  */
 const initializeConnection = async () => {
   try {
-    // TODO: Implement database connection
-    // Examples:
-    // - PostgreSQL: pg or knex.js
-    // - MongoDB: mongoose
-    // - MySQL: mysql2 or sequelize
+    if (db) {
+      logger.info('Database already initialized, returning existing connection');
+      return db;
+    }
+
+    logger.info(`Initializing PostgreSQL database connection for ${config.NODE_ENV} environment`);
+    logger.info(`Database: ${config.DB_NAME} @ ${config.DB_HOST}:${config.DB_PORT}`);
+
+    // Create Knex instance with database configuration
+    db = knex(databaseConfig);
+
+    // Test the connection
+    await db.raw('SELECT 1');
     
-    logger.info('Database connection initialized');
-    return dbConnection;
+    logger.info(' Database connection established successfully');
+    return db;
   } catch (err) {
-    logger.error('Failed to initialize database connection', err);
+    logger.error(' Failed to initialize database connection:', err.message);
     throw err;
   }
 };
@@ -33,12 +43,13 @@ const initializeConnection = async () => {
  */
 const closeConnection = async () => {
   try {
-    if (dbConnection) {
-      // TODO: Close connection
-      logger.info('Database connection closed');
+    if (db) {
+      await db.destroy();
+      logger.info(' Database connection closed');
+      db = null;
     }
   } catch (err) {
-    logger.error('Error closing database connection', err);
+    logger.error(' Error closing database connection:', err);
   }
 };
 
@@ -46,29 +57,30 @@ const closeConnection = async () => {
  * Get active database connection
  */
 const getConnection = () => {
-  if (!dbConnection) {
-    throw new Error('Database connection not initialized');
+  if (!db) {
+    throw new Error('Database connection not initialized. Call initializeConnection() first.');
   }
-  return dbConnection;
+  return db;
 };
 
 /**
- * Check database health
+ * Check if connection is active
  */
-const healthCheck = async () => {
-  try {
-    // TODO: Implement health check query
-    logger.info('Database health check passed');
-    return { status: 'healthy' };
-  } catch (err) {
-    logger.error('Database health check failed', err);
-    return { status: 'unhealthy' };
-  }
+const isConnected = () => {
+  return db !== null;
+};
+
+/**
+ * Query helper for common database operations
+ */
+const query = async (tableName) => {
+  return getConnection()(tableName);
 };
 
 module.exports = {
   initializeConnection,
   closeConnection,
   getConnection,
-  healthCheck,
+  isConnected,
+  query,
 };
