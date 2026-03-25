@@ -11,7 +11,14 @@ class PesapalService {
   constructor() {
     this.consumerKey = process.env.PESAPAL_CONSUMER_KEY;
     this.consumerSecret = process.env.PESAPAL_CONSUMER_SECRET;
-    this.apiUrl = process.env.PESAPAL_API_URL || 'https://api.pesapal.com';
+    
+    // Determine API URL based on NODE_ENV
+    // Production: https://api.pesapal.com
+    // Development/Sandbox: https://sandbox.pesapal.com
+    const isProduction = process.env.NODE_ENV === 'production';
+    this.apiUrl = process.env.PESAPAL_API_URL || 
+                  (isProduction ? 'https://api.pesapal.com' : 'https://sandbox.pesapal.com');
+    
     this.redirectUrl = process.env.PESAPAL_REDIRECT_URL || 'http://localhost:5000/payment-status';
     
     this.authUrl = `${this.apiUrl}/api/Auth/RequestToken`;
@@ -21,7 +28,6 @@ class PesapalService {
     this.accessToken = null;
     this.tokenExpiry = null;
     
-    const isProduction = process.env.NODE_ENV === 'production';
     console.log(`[PESAPAL] Initialized in ${isProduction ? 'PRODUCTION' : 'SANDBOX'} mode`);
     console.log(`[PESAPAL] API URL: ${this.apiUrl}`);
   }
@@ -39,6 +45,7 @@ class PesapalService {
       }
 
       console.log('[PESAPAL] Requesting new access token');
+      console.log('[PESAPAL] Token endpoint:', this.authUrl);
       
       const response = await axios({
         method: 'POST',
@@ -64,9 +71,25 @@ class PesapalService {
       }
     } catch (error) {
       console.error('[PESAPAL] Failed to get access token:', error.message);
-      if (error.response?.data) {
-        console.error('[PESAPAL] Error details:', error.response.data);
+      console.error('[PESAPAL] Token URL attempted:', this.authUrl);
+      
+      // Log specific error codes
+      if (error.code) {
+        console.error('[PESAPAL] Error code:', error.code); // ENOTFOUND, ECONNREFUSED, etc.
       }
+      
+      if (error.response?.data) {
+        console.error('[PESAPAL] API error response:', error.response.data);
+      }
+      
+      // Provide more helpful error messages
+      if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
+        console.error('[PESAPAL] ⚠️  DNS/Network error - Cannot resolve hostname. Check:');
+        console.error('  - Internet connectivity');
+        console.error('  - PESAPAL_API_URL environment variable (if set)');
+        console.error('  - NODE_ENV setting (should be development for sandbox)');
+      }
+      
       throw new Error(`Pesapal authentication failed: ${error.message}`);
     }
   }
