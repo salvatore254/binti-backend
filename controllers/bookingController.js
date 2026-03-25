@@ -6,6 +6,7 @@
 const response = require('../utils/response');
 const logger = require('../utils/logger');
 const { validateBookingData } = require('../validators/bookingValidator');
+const { query } = require('../database/connection');
 
 /**
  * Create a new booking
@@ -13,7 +14,7 @@ const { validateBookingData } = require('../validators/bookingValidator');
  */
 const createBooking = async (req, res, next) => {
   try {
-    const { fullname, phone, email, tentType, location, breakdown } = req.body;
+    const { fullname, phone, email, tentType, location, mpesaPhone, breakdown, totalAmount, termsAccepted } = req.body;
 
     // Validate booking data
     const validation = validateBookingData({
@@ -28,14 +29,34 @@ const createBooking = async (req, res, next) => {
       return response.validationError(res, validation.errors);
     }
 
-    // TODO: Save booking to database
-    // const booking = await BookingService.create({...});
+    // Create booking document
+    const Booking = query('Booking');
+    const bookingData = {
+      fullname,
+      phone,
+      mpesaPhone: mpesaPhone || phone,
+      email,
+      tentType,
+      location,
+      venue: location,
+      breakdown,
+      totalAmount,
+      termsAccepted,
+      termsAcceptedAt: termsAccepted ? new Date() : null,
+      status: 'pending',
+    };
 
-    logger.info(`New booking created for ${fullname}`);
+    const booking = await Booking.create(bookingData);
+
+    logger.info(`New booking created: ${booking._id} for ${fullname}`);
 
     return response.success(res, {
-      bookingId: 'BINTI-' + Date.now(),
-      // ...booking data
+      bookingId: booking._id,
+      fullname: booking.fullname,
+      email: booking.email,
+      totalAmount: booking.totalAmount,
+      depositAmount: booking.depositAmount,
+      status: booking.status,
     }, 'Booking created successfully', 201);
   } catch (err) {
     logger.error('Error creating booking', err);
@@ -51,14 +72,16 @@ const getBooking = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // TODO: Fetch from database
-    // const booking = await BookingService.getById(id);
+    const Booking = query('Booking');
+    const booking = await Booking.findById(id);
 
-    // if (!booking) {
-    //   return response.error(res, 'Booking not found', 404);
-    // }
+    if (!booking) {
+      return response.error(res, 'Booking not found', 404);
+    }
 
-    return response.success(res, {}, 'Booking retrieved successfully');
+    logger.info(`Retrieved booking: ${id}`);
+
+    return response.success(res, booking, 'Booking retrieved successfully');
   } catch (err) {
     logger.error('Error retrieving booking', err);
     return response.error(res, 'Failed to retrieve booking', 500);
@@ -73,11 +96,19 @@ const getAllBookings = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    // TODO: Fetch from database
-    // const bookings = await BookingService.getAll(page, limit);
+    const Booking = query('Booking');
+    const bookings = await Booking.find()
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
 
-    return response.paginated(res, [], 0, page, limit, 'Bookings retrieved successfully');
+    const total = await Booking.countDocuments();
+
+    logger.info(`Retrieved ${bookings.length} bookings (page ${page})`);
+
+    return response.paginated(res, bookings, total, page, limit, 'Bookings retrieved successfully');
   } catch (err) {
     logger.error('Error retrieving bookings', err);
     return response.error(res, 'Failed to retrieve bookings', 500);
@@ -93,12 +124,20 @@ const updateBooking = async (req, res, next) => {
     const { id } = req.params;
     const updateData = req.body;
 
-    // TODO: Update in database
-    // const booking = await BookingService.update(id, updateData);
+    const Booking = query('Booking');
+    const booking = await Booking.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true }
+    );
+
+    if (!booking) {
+      return response.error(res, 'Booking not found', 404);
+    }
 
     logger.info(`Booking ${id} updated`);
 
-    return response.success(res, {}, 'Booking updated successfully');
+    return response.success(res, booking, 'Booking updated successfully');
   } catch (err) {
     logger.error('Error updating booking', err);
     return response.error(res, 'Failed to update booking', 500);
@@ -113,8 +152,16 @@ const cancelBooking = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // TODO: Cancel in database
-    // const booking = await BookingService.cancel(id);
+    const Booking = query('Booking');
+    const booking = await Booking.findByIdAndUpdate(
+      id,
+      { status: 'cancelled', updatedAt: new Date() },
+      { new: true }
+    );
+
+    if (!booking) {
+      return response.error(res, 'Booking not found', 404);
+    }
 
     logger.info(`Booking ${id} cancelled`);
 

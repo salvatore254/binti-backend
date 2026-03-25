@@ -1,41 +1,60 @@
 /**
- * Database Connection
- * Establishes and manages PostgreSQL database connections using Knex.js
+ * Database Connection (MongoDB via Mongoose)
+ * Manages MongoDB connection with singleton pattern
  */
 
-const knex = require('knex');
+const mongoose = require('mongoose');
 const config = require('../config/environment');
 const logger = require('../utils/logger');
-const databaseConfig = require('../config/database');
 
-let db = null;
+let isDbConnected = false;
 
 /**
- * Initialize database connection
- * Uses Knex.js for PostgreSQL connection pooling
+ * Initialize MongoDB connection
+ * Automatically called on server startup
  */
 const initializeConnection = async () => {
   try {
-    if (db) {
-      logger.info('Database already initialized, returning existing connection');
-      return db;
+    if (isDbConnected) {
+      logger.info('Database already connected');
+      return mongoose.connection;
     }
 
-    logger.info(`Initializing PostgreSQL database connection for ${config.NODE_ENV} environment`);
-    logger.info(`Database: ${config.DB_NAME} @ ${config.DB_HOST}:${config.DB_PORT}`);
+    const mongoUri = process.env.DATABASE_URL || 
+      `mongodb://${config.DB_HOST || 'localhost'}:${config.DB_PORT || 27017}/${config.DB_NAME || 'binti_events'}`;
 
-    // Create Knex instance with database configuration
-    db = knex(databaseConfig);
+    logger.info(`Connecting to MongoDB: ${mongoUri.replace(/:[^@]*@/, ':***@')}`);
 
-    // Test the connection
-    await db.raw('SELECT 1');
+    await mongoose.connect(mongoUri, {
+      autoCreate: true,
+      autoIndex: true,
+    });
+
+    isDbConnected = true;
+    logger.info('✅ MongoDB connected successfully');
     
-    logger.info(' Database connection established successfully');
-    return db;
-  } catch (err) {
-    logger.error(' Failed to initialize database connection:', err.message);
-    throw err;
+    return mongoose.connection;
+  } catch (error) {
+    logger.error(`❌ Database connection error: ${error.message}`);
+    throw error;
   }
+};
+
+/**
+ * Get Mongoose connection instance
+ */
+const getConnection = () => {
+  if (!isDbConnected) {
+    throw new Error('Database not initialized. Call initializeConnection first.');
+  }
+  return mongoose.connection;
+};
+
+/**
+ * Check if database is connected
+ */
+const isConnected = () => {
+  return isDbConnected && mongoose.connection.readyState === 1;
 };
 
 /**
@@ -43,38 +62,39 @@ const initializeConnection = async () => {
  */
 const closeConnection = async () => {
   try {
-    if (db) {
-      await db.destroy();
-      logger.info(' Database connection closed');
-      db = null;
+    if (isDbConnected) {
+      await mongoose.disconnect();
+      isDbConnected = false;
+      logger.info('✅ MongoDB disconnected');
     }
-  } catch (err) {
-    logger.error(' Error closing database connection:', err);
+  } catch (error) {
+    logger.error(`❌ Error closing database connection: ${error.message}`);
+    throw error;
   }
 };
 
 /**
- * Get active database connection
+ * Query helper - returns the model for the specified collection
+ * Usage: const bookings = await query('Booking').find();
+ * 
+ * @param {string} modelName - Name of the Mongoose model
+ * @returns {Object} Mongoose model
  */
-const getConnection = () => {
-  if (!db) {
-    throw new Error('Database connection not initialized. Call initializeConnection() first.');
+const query = (modelName) => {
+  if (!isDbConnected) {
+    throw new Error('Database not initialized');
   }
-  return db;
-};
+  
+  // Import models
+  const models = {
+    'Booking': require('../models/Booking'),
+  };
 
-/**
- * Check if connection is active
- */
-const isConnected = () => {
-  return db !== null;
-};
+  if (!models[modelName]) {
+    throw new Error(`Model "${modelName}" not found`);
+  }
 
-/**
- * Query helper for common database operations
- */
-const query = async (tableName) => {
-  return getConnection()(tableName);
+  return models[modelName];
 };
 
 module.exports = {

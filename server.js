@@ -9,6 +9,10 @@ const bookingRoutes = require("./routes/bookingRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 
+// Initialize database and email connections
+const { initializeConnection: initializeDatabase } = require("./database/connection");
+const logger = require("./utils/logger");
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -53,7 +57,53 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// start
-app.listen(PORT, () => {
-  console.log(` Binti backend listening at http://localhost:${PORT}`);
-});
+// Initialize database and start server
+const initializeServer = async () => {
+  try {
+    // Initialize MongoDB connection
+    await initializeDatabase();
+    logger.info('✅ MongoDB connected');
+    
+    // Verify SMTP is configured
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+    if (emailUser && emailPass) {
+      console.log('[EMAIL]  SMTP configured - Emails enabled');
+    } else {
+      console.log('[EMAIL]  SMTP not configured - Emails will not be sent');
+      console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASS in .env to enable');
+    }
+    
+    // Start server
+    const server = app.listen(PORT, () => {
+      console.log(` Binti backend listening at http://localhost:${PORT}`);
+      console.log(` Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(` Database: MongoDB @ ${process.env.DB_HOST}:${process.env.DB_PORT}`);
+    });
+
+    // Graceful shutdown
+    process.on('SIGTERM', async () => {
+      console.log(' SIGTERM received, shutting down gracefully...');
+      server.close(async () => {
+        const { closeConnection } = require("./database/connection");
+        await closeConnection();
+        process.exit(0);
+      });
+    });
+
+    process.on('SIGINT', async () => {
+      console.log(' SIGINT received, shutting down gracefully...');
+      server.close(async () => {
+        const { closeConnection } = require("./database/connection");
+        await closeConnection();
+        process.exit(0);
+      });
+    });
+
+  } catch (err) {
+    logger.error(' Failed to initialize server:', err);
+    process.exit(1);
+  }
+};
+
+initializeServer();

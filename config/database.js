@@ -7,13 +7,16 @@ const config = require('./environment');
 
 const databaseConfig = {
   development: {
-    client: 'pg',
+    client: 'mysql2',
     connection: {
       host: config.DB_HOST,
       port: config.DB_PORT,
       user: config.DB_USER,
       password: config.DB_PASSWORD,
       database: config.DB_NAME,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
     },
     migrations: {
       directory: './database/migrations',
@@ -27,7 +30,7 @@ const databaseConfig = {
     },
   },
   production: {
-    client: 'pg',
+    client: 'mysql2',
     connection: process.env.DATABASE_URL,
     pool: {
       min: 5,

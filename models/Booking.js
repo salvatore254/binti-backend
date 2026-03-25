@@ -1,90 +1,181 @@
 /**
- * Booking Model
- * Defines the Booking data model and related methods
+ * Booking Model (MongoDB with Mongoose)
+ * Defines the Booking schema and data model
  */
 
-class Booking {
-  constructor(data) {
-    this.id = data.id;
-    this.fullname = data.fullname;
-    this.phone = data.phone;
-    this.mpesaPhone = data.mpesaPhone || data.phone; // Use contact phone as fallback
-    this.email = data.email;
-    this.tentType = data.tentType;
-    this.tentSize = data.tentSize;
-    this.lighting = data.lighting || false;
-    this.transport = data.transport || false;
-    this.siteVisit = data.siteVisit || false;
-    this.decor = data.decor || false;
-    this.venue = data.venue;
-    this.eventDate = data.eventDate; // Event date (YYYY-MM-DD format)
-    this.setupTime = data.setupTime; // Setup time (HH:MM format)
-    this.totalAmount = data.totalAmount;
-    this.breakdown = data.breakdown; // JSON {tent, lighting, transport, siteVisit}
-    this.status = data.status || 'pending'; // pending, paid, completed, cancelled
-    this.paymentMethod = data.paymentMethod; // mpesa, pesapal
-    this.transactionId = data.transactionId;
-    
-    // Terms and Conditions Acceptance
-    this.termsAccepted = data.termsAccepted || false;
-    this.termsAcceptedAt = data.termsAcceptedAt || null;
-    
-    // Payment Breakdown (80% deposit, 20% balance)
-    this.depositAmount = Math.round(data.totalAmount * 0.8);
-    this.remainingAmount = Math.round(data.totalAmount * 0.2);
-    
-    this.createdAt = data.createdAt;
-    this.updatedAt = data.updatedAt;
-  }
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
 
-  /**
-   * Convert model to plain object for responses
-   */
-  toJSON() {
-    return {
-      id: this.id,
-      fullname: this.fullname,
-      phone: this.phone,
-      mpesaPhone: this.mpesaPhone,
-      email: this.email,
-      tentType: this.tentType,
-      tentSize: this.tentSize,
-      addOns: {
-        lighting: this.lighting,
-        transport: this.transport,
-        siteVisit: this.siteVisit,
-        decor: this.decor,
-      },
-      venue: this.venue,
-      eventDate: this.eventDate,
-      setupTime: this.setupTime,
-      totalAmount: this.totalAmount,
-      depositAmount: this.depositAmount,
-      remainingAmount: this.remainingAmount,
-      breakdown: this.breakdown,
-      status: this.status,
-      paymentMethod: this.paymentMethod,
-      transactionId: this.transactionId,
-      termsAccepted: this.termsAccepted,
-      termsAcceptedAt: this.termsAcceptedAt,
-      createdAt: this.createdAt,
-      updatedAt: this.updatedAt,
-    };
-  }
+/**
+ * Tent Configuration Schema
+ * For storing multiple tent configurations in a single booking
+ */
+const tentConfigSchema = new mongoose.Schema({
+  tentType: {
+    type: String,
+    enum: ['stretch', 'aframe', 'marquee', 'bell'],
+    required: true,
+  },
+  tentSize: String,
+  sections: Number, // For a-frame tents
+  quantity: {
+    type: Number,
+    default: 1,
+  },
+}, { _id: false });
 
-  /**
-   * Get booking summary
-   */
-  getSummary() {
-    return {
-      bookingId: this.id,
-      customer: this.fullname,
-      tent: this.tentType,
-      venue: this.venue,
-      amount: this.totalAmount,
-      status: this.status,
-    };
+/**
+ * Booking Schema
+ * Main booking document structure
+ */
+const bookingSchema = new mongoose.Schema({
+  // Generate our own ID (for compatibility with frontend)
+  _id: {
+    type: String,
+    default: () => uuidv4(),
+  },
+
+  // Contact Information
+  fullname: {
+    type: String,
+    required: true,
+  },
+  phone: {
+    type: String,
+    required: true,
+  },
+  mpesaPhone: {
+    type: String,
+    required: true,
+  },
+  email: {
+    type: String,
+    required: true,
+  },
+
+  // Tent Configuration
+  tentConfigs: [tentConfigSchema],
+  tentType: String,
+  tentSize: String,
+  sections: Number, // For a-frame tents
+
+  // Add-ons
+  lighting: {
+    type: Boolean,
+    default: false,
+  },
+  transport: {
+    type: Boolean,
+    default: false,
+  },
+  pasound: {
+    type: Boolean,
+    default: false,
+  },
+  dancefloor: {
+    type: Boolean,
+    default: false,
+  },
+  stagepodium: {
+    type: Boolean,
+    default: false,
+  },
+  welcomesigns: {
+    type: Boolean,
+    default: false,
+  },
+  siteVisit: {
+    type: Boolean,
+    default: false,
+  },
+  decor: {
+    type: Boolean,
+    default: false,
+  },
+
+  // Venue and Location
+  venue: {
+    type: String,
+    required: true,
+  },
+  location: String,
+
+  // Event Details
+  eventDate: {
+    type: Date,
+    required: true,
+  },
+  setupTime: {
+    type: String, // HH:MM format
+    required: true,
+  },
+
+  // Package Information
+  packageName: String,
+  packageBasePrice: {
+    type: Number,
+    default: 0,
+  },
+
+  // Additional Info
+  additionalInfo: {
+    type: String,
+    default: '',
+  },
+
+  // Pricing
+  totalAmount: {
+    type: Number,
+    required: true,
+  },
+  depositAmount: Number, // 80% of total
+  remainingAmount: Number, // 20% of total
+  breakdown: mongoose.Schema.Types.Mixed, // {tent: X, lighting: Y, transport: Z, siteVisit: W}
+
+  // Payment Information
+  status: {
+    type: String,
+    enum: ['pending', 'paid', 'completed', 'cancelled'],
+    default: 'pending',
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['mpesa', 'pesapal', null],
+    default: null,
+  },
+  transactionId: String,
+
+  // Terms and Conditions
+  termsAccepted: {
+    type: Boolean,
+    default: false,
+  },
+  termsAcceptedAt: Date,
+
+  // Timestamps (MongoDB auto-managed, but we keep for compatibility)
+  createdAt: {
+    type: Date,
+    default: () => new Date(),
+  },
+  updatedAt: {
+    type: Date,
+    default: () => new Date(),
+  },
+}, {
+  collection: 'bookings', // Explicit collection name
+  timestamps: { currentTime: () => new Date() }, // Auto-updates updatedAt
+});
+
+// Middleware to calculate deposit and remaining amounts before saving
+bookingSchema.pre('save', function(next) {
+  if (this.totalAmount) {
+    this.depositAmount = Math.round(this.totalAmount * 0.8);
+    this.remainingAmount = Math.round(this.totalAmount * 0.2);
   }
-}
+  next();
+});
+
+// Create model
+const Booking = mongoose.model('Booking', bookingSchema);
 
 module.exports = Booking;

@@ -24,7 +24,7 @@ router.post("/calculate", (req, res) => {
       eventDate, setupTime 
     } = req.body;
 
-    console.log("📊 /calculate endpoint called:", {
+    console.log("/calculate endpoint called:", {
       bookingFlow,
       packageName,
       packageBasePrice,
@@ -53,7 +53,7 @@ router.post("/calculate", (req, res) => {
         name: packageName || 'Selected Package', 
         basePrice: packageBasePrice 
       };
-      console.log("✅ Package added - Base price:", packageBasePrice);
+      console.log("Package added - Base price:", packageBasePrice);
     }
 
     // Handle Tent Configurations (if provided - can be combined with package)
@@ -100,7 +100,7 @@ router.post("/calculate", (req, res) => {
         cost: tentTotal,
         count: tentConfigs.length
       };
-      console.log("✅ Tents added - Total tent cost:", tentTotal, "Configs:", tentDetails.length);
+      console.log("Tents added - Total tent cost:", tentTotal, "Configs:", tentDetails.length);
     } else if (hasPackage) {
       // Package only, no tents
       breakdown.tent = { type: 'package-included', cost: 0 };
@@ -230,7 +230,7 @@ router.post("/confirm", async (req, res) => {
       packageName, packageBasePrice,
       tentType, tentSize, lighting, transport, decor, pasound, dancefloor, stagepodium, welcomesigns,
       location, sections, termsAccepted, paymentMethod, mpesaPhone,
-      eventDate, setupTime
+      eventDate, setupTime, additionalInfo
     } = req.body;
 
     console.log("✅ /confirm endpoint called with:", {
@@ -253,7 +253,8 @@ router.post("/confirm", async (req, res) => {
       sections,
       termsAccepted,
       paymentMethod,
-      mpesaPhone
+      mpesaPhone,
+      additionalInfo
     });
 
     // Validate required fields
@@ -333,7 +334,7 @@ router.post("/confirm", async (req, res) => {
           configCost = 15000;
           tentDetails.push({ type: 'cheese', color: config.color || 'white', cost: configCost });
         }
-        
+        console.log("Tent configuration added:", config);
         tentTotal += configCost;
       }
       
@@ -456,8 +457,11 @@ router.post("/confirm", async (req, res) => {
       phone,
       mpesaPhone,
       email,
+      tentConfigs,
       tentType,
       tentSize,
+      sections,
+      aframeSections: sections,
       lighting: lighting === "yes" || lighting === true,
       transport: transport === "yes" || transport === true,
       pasound: pasound === "yes" || pasound === true,
@@ -466,8 +470,12 @@ router.post("/confirm", async (req, res) => {
       welcomesigns: welcomesigns === "yes" || welcomesigns === true,
       decor: decor === "yes" || decor === true,
       venue,
+      location,
       eventDate,
       setupTime,
+      packageName,
+      packageBasePrice,
+      additionalInfo,
       totalAmount: total,
       breakdown,
       status: "pending",
@@ -480,12 +488,16 @@ router.post("/confirm", async (req, res) => {
 
     // Send confirmation emails (non-blocking - don't wait for email before responding)
     // Email failures should not fail the entire booking
-    console.log("✅ Booking confirmed:");
+    console.log("Booking confirmed:");
     console.log(`   Booking ID: ${bookingId}`);
     console.log(`   Customer: ${fullname}`);
     console.log(`   Total: KES ${total}`);
     console.log(`   Deposit (80%): KES ${Math.round(total * 0.8)}`);
     console.log(`   Sending confirmation emails...`);
+    
+    // TODO: Email service disabled temporarily due to Gmail authentication issues
+    // Re-enable after configuring Gmail App Password or alternative email service
+    /*
     (async () => {
       try {
         const EmailService = require("../services/EmailService");
@@ -494,10 +506,13 @@ router.post("/confirm", async (req, res) => {
         console.log(`   Customer email sent: ${customerEmailResult.success}`);
         console.log(`   Admin email sent: ${adminEmailResult.success}`);
       } catch (emailErr) {
-        console.warn('⚠️ Email service unavailable:', emailErr.message);
+        console.warn('Email service unavailable:', emailErr.message);
         console.warn('Booking was created successfully but confirmation emails could not be sent.');
       }
     })();
+    */
+    
+    console.log(`   Email notifications disabled (temporarily)`);
 
     // Return booking confirmation immediately (don't wait for emails)
     res.json({
@@ -513,7 +528,7 @@ router.post("/confirm", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Error confirming booking:", err);
+    console.error("Error confirming booking:", err);
     res.status(500).json({
       success: false,
       message: "Server error confirming booking. Please try again.",
