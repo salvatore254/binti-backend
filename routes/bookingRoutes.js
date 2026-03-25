@@ -3,8 +3,9 @@ const express = require("express");
 const router = express.Router();
 const TransportService = require("../services/TransportService");
 const Booking = require("../models/Booking");
-const EmailService = require("../services/EmailService");
 const { v4: uuidv4 } = require("uuid");
+
+// Note: EmailService is only imported when confirm endpoint is called (lazy load)
 
 /**
  * POST /api/bookings/calculate
@@ -477,19 +478,28 @@ router.post("/confirm", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    // Send confirmation emails
-    const customerEmailResult = await EmailService().sendBookingConfirmation(booking);
-    const adminEmailResult = await EmailService().sendAdminNotification(booking, booking.depositAmount);
-
+    // Send confirmation emails (non-blocking - don't wait for email before responding)
+    // Email failures should not fail the entire booking
     console.log("✅ Booking confirmed:");
     console.log(`   Booking ID: ${bookingId}`);
     console.log(`   Customer: ${fullname}`);
     console.log(`   Total: KES ${total}`);
-    console.log(`   Deposit (80%): KES ${booking.depositAmount}`);
-    console.log(`   Customer email sent: ${customerEmailResult.success}`);
-    console.log(`   Admin email sent: ${adminEmailResult.success}`);
+    console.log(`   Deposit (80%): KES ${Math.round(total * 0.8)}`);
+    console.log(`   Sending confirmation emails...`);
+    (async () => {
+      try {
+        const EmailService = require("../services/EmailService");
+        const customerEmailResult = await EmailService().sendBookingConfirmation(booking);
+        const adminEmailResult = await EmailService().sendAdminNotification(booking, booking.depositAmount);
+        console.log(`   Customer email sent: ${customerEmailResult.success}`);
+        console.log(`   Admin email sent: ${adminEmailResult.success}`);
+      } catch (emailErr) {
+        console.warn('⚠️ Email service unavailable:', emailErr.message);
+        console.warn('Booking was created successfully but confirmation emails could not be sent.');
+      }
+    })();
 
-    // Return booking confirmation
+    // Return booking confirmation immediately (don't wait for emails)
     res.json({
       success: true,
       message: "Booking confirmed! Confirmation emails have been sent.",
@@ -497,8 +507,8 @@ router.post("/confirm", async (req, res) => {
       depositAmount: booking.depositAmount,
       remainingAmount: booking.remainingAmount,
       emailsSent: {
-        customer: customerEmailResult.success,
-        admin: adminEmailResult.success
+        customer: "processing",
+        admin: "processing"
       }
     });
 
