@@ -13,6 +13,18 @@ class MpesaService {
     this.shortcode = process.env.MPESA_SHORTCODE;
     this.passkey = process.env.MPESA_PASSKEY;
     
+    // Validate that credentials are set
+    const missingCredentials = [];
+    if (!this.consumerKey) missingCredentials.push('MPESA_CONSUMER_KEY');
+    if (!this.consumerSecret) missingCredentials.push('MPESA_CONSUMER_SECRET');
+    if (!this.shortcode) missingCredentials.push('MPESA_SHORTCODE');
+    if (!this.passkey) missingCredentials.push('MPESA_PASSKEY');
+    
+    if (missingCredentials.length > 0) {
+      console.warn(`[MPESA] ⚠️ WARNING: Missing credentials in .env file: ${missingCredentials.join(', ')}`);
+      console.warn(`[MPESA] M-Pesa STK push will fail until these are configured.`);
+    }
+    
     // Use production URL by default; sandbox if NODE_ENV is not production
     const isProduction = process.env.NODE_ENV === 'production';
     this.baseUrl = isProduction 
@@ -57,13 +69,13 @@ class MpesaService {
         this.accessToken = response.data.access_token;
         // Token expires in 3600 seconds; cache for 59 minutes (3540 seconds)
         this.tokenExpiry = Date.now() + (3540 * 1000);
-        console.log('[MPESA] ✅ Access token obtained successfully');
+        console.log('[MPESA]  Access token obtained successfully');
         return this.accessToken;
       } else {
         throw new Error('No access token in response');
       }
     } catch (error) {
-      console.error('[MPESA] ❌ Failed to get access token:', error.message);
+      console.error('[MPESA]  Failed to get access token:', error.message);
       if (error.response?.data) {
         console.error('[MPESA] Error details:', error.response.data);
       }
@@ -81,6 +93,11 @@ class MpesaService {
    */
   async initiateStkPush(phone, amount, accountRef, description = 'Binti Events Booking') {
     try {
+      // Validate that credentials are configured
+      if (!this.consumerKey || !this.consumerSecret || !this.shortcode || !this.passkey) {
+        throw new Error('M-Pesa credentials not configured. Set MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_SHORTCODE, and MPESA_PASSKEY in .env file.');
+      }
+
       // Validate inputs
       if (!phone || !amount || !accountRef) {
         throw new Error('Missing required fields: phone, amount, accountRef');
@@ -118,7 +135,7 @@ class MpesaService {
         PartyA: normalizedPhone,
         PartyB: this.shortcode,
         PhoneNumber: normalizedPhone,
-        CallBackURL: `${process.env.BACKEND_URL || 'https://your-backend-domain.com'}/api/payments/mpesa-callback`,
+        CallBackURL: `${process.env.BACKEND_URL || 'https://binti-backend-production.up.railway.app'}/api/payments/mpesa-callback`,
         AccountReference: accountRef.toString().substring(0, 12), // Max 12 characters
         TransactionDesc: description.substring(0, 40) // Max 40 characters
       };
@@ -142,7 +159,7 @@ class MpesaService {
         timeout: 15000
       });
 
-      console.log('[MPESA] ✅ STK push initiated successfully');
+      console.log('[MPESA]  STK push initiated successfully');
       console.log('[MPESA] Response:', response.data);
 
       // Return checkout request ID and other relevant data
@@ -155,9 +172,9 @@ class MpesaService {
         merchantRequestId: response.data.MerchantRequestID
       };
     } catch (error) {
-      console.error('[MPESA] ❌ STK push failed:', error.message);
+      console.error('[MPESA]  STK push failed:', error.message);
       if (error.response?.data) {
-        console.error('[MPESA] Error response:', error.response.data);
+        console.error('[MPESA]  Error response:', error.response.data);
       }
       throw error;
     }
@@ -263,6 +280,7 @@ class MpesaService {
       resultDesc: callbackData.Body?.stkCallback?.ResultDesc || null,
       merchantRequestId: callbackData.Body?.stkCallback?.MerchantRequestID || null,
       checkoutRequestId: callbackData.Body?.stkCallback?.CheckoutRequestID || null,
+      accountRef: callbackData.Body?.stkCallback?.AccountReference || null,
       amount: metadata.Amount || null,
       mpesaReceiptNumber: metadata.MpesaReceiptNumber || null,
       transactionDate: metadata.TransactionDate || null,

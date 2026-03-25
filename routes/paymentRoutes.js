@@ -4,11 +4,13 @@ const router = express.Router();
 const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 const MpesaService = require("../services/MpesaService");
+const PesapalService = require("../services/PesapalService");
 const EmailService = require("../services/EmailService");
 const Booking = require("../models/Booking");
 
-// Initialize M-Pesa service (production or sandbox based on NODE_ENV)
+// Initialize payment services (production or sandbox based on NODE_ENV)
 const mpesaService = new MpesaService();
+const pesapalService = new PesapalService();
 const emailService = EmailService; // Already instantiated in EmailService.js
 
 /**
@@ -26,19 +28,85 @@ const bookingCache = {};
 
 /**
  * POST /api/payments/pesapal
- * Body: { amount, email, phone, orderRef }
- * Returns: { success: true, iframe_url }
+ * Body: { amount, email, phone, firstName, lastName, orderRef, description }
+ * Returns: { success: true, iframe_url, orderTrackingId }
+ * 
+ * Creates a payment order via Pesapal API and returns the payment iframe URL
  */
 router.post("/pesapal", async (req, res) => {
   try {
-    const { amount, email, phone, orderRef } = req.body;
-    // In production: call Pesapal API from server to create an order and return the iframe URL.
-    // Here: return a demo/placeholder url using uuid (front-end can embed).
-    const fakeIframe = `https://demo.pesapal.com/iframe?orderRef=${encodeURIComponent(orderRef || uuidv4())}&amount=${encodeURIComponent(amount)}&email=${encodeURIComponent(email)}&phone=${encodeURIComponent(phone)}`;
-    return res.json({ success: true, iframe_url: fakeIframe });
-  } catch (err) {
-    console.error("Pesapal error:", err);
-    return res.status(500).json({ success: false, message: "Failed to create Pesapal checkout." });
+    const { amount, email, phone, firstName = 'Customer', lastName = 'Name', orderRef, description } = req.body;
+    
+    console.log(`[PAYMENT] Pesapal payment initiation:`, {
+      amount,
+      email,
+      phone,
+      orderRef
+    });
+
+    // Validate required fields
+    if (!amount || !email || !orderRef) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: amount, email, orderRef"
+      });
+    }
+
+    if (isNaN(amount) || amount <= 0 || amount > 999999) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount (must be between 1 and 999999 KES)"
+      });
+    }
+
+    // Create payment order via Pesapal API
+    const result = await pesapalService.createOrder({
+      amount,
+      currency: 'KES',
+      orderRef: orderRef || uuidv4(),
+      description: description || 'Binti Events Booking',
+      email,
+      phone: phone || '',
+      firstName,
+      lastName
+    });
+
+    // Cache booking data for confirmation email later
+    const bookingData = {
+      fullName: `${firstName} ${lastName}`,
+      email: email,
+      phone: phone || '',
+      amount: amount,
+      orderRef: orderRef,
+      paymentMethod: 'pesapal',
+      timestamp: new Date().toISOString()
+    };
+
+    // Store in cache with orderRef as key
+    bookingCache[orderRef] = bookingData;
+    console.log(`[PAYMENT] Booking data cached for ${orderRef}`);
+
+    // Auto-clean cache after 1 hour (payment should complete within this time)
+    setTimeout(() => {
+      if (bookingCache[orderRef]) {
+        delete bookingCache[orderRef];
+        console.log(`[PAYMENT] Cache expired for ${orderRef}`);
+      }
+    }, 60 * 60 * 1000);
+
+    return res.json({
+      success: true,
+      message: "Payment order created successfully",
+      iframe_url: result.iframe_url,
+      orderTrackingId: result.orderTrackingId,
+      responseCode: result.responseCode
+    });
+  } catch (error) {
+    console.error("[PAYMENT] Pesapal initiation failed:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Pesapal payment order creation failed"
+    });
   }
 });
 
@@ -127,12 +195,89 @@ router.post("/mpesa", async (req, res) => {
 
 /**
  * Pesapal callback endpoint (IPN)
- * Pesapal will POST to your callback URL. Implement verification and status update logic here.
+ * Pesapal will POST transaction results here after payment processing
+ * Verifies payment status and sends confirmation
  */
-router.post("/pesapal-callback", (req, res) => {
-  console.log("Pesapal callback received:", req.body);
-  // TODO: verify signature, update booking status in DB, respond 200.
-  res.sendStatus(200);
+router.post("/pesapal-callback", async (req, res) => {
+  try {
+    console.log("[PESAPAL CALLBACK] Callback received from Pesapal");
+    console.log("[PESAPAL CALLBACK] Body:", JSON.stringify(req.body, null, 2));
+
+    // Validate the callback
+    const validation = pesapalService.validateCallback(req.body);
+    
+    if (!validation.valid) {
+      console.warn("[PESAPAL CALLBACK] Invalid callback");
+      return res.status(400).json({ success: false, message: 'Invalid callback' });
+    }
+
+    console.log("[PESAPAL CALLBACK] Parsed callback:", validation);
+
+    // Retrieve cached booking data using orderTrackingId
+    const cachedBooking = bookingCache[validation.orderTrackingId];
+    
+    if (cachedBooking) {
+      console.log("[PESAPAL CALLBACK] Found cached booking data for", cachedBooking.fullName);
+      
+      // Check payment status from Pesapal
+      try {
+        const statusCheck = await pesapalService.getTransactionStatus(validation.orderTrackingId);
+        
+        if (statusCheck.status === 'COMPLETED' || statusCheck.status === 'PENDING') {
+          console.log("[PESAPAL CALLBACK] ✅ Payment status:", statusCheck.status);
+          
+          // Prepare confirmation email data
+          const confirmationData = {
+            ...cachedBooking,
+            orderTrackingId: validation.orderTrackingId,
+            status: statusCheck.status,
+            amount: statusCheck.amount,
+            currency: statusCheck.currency,
+            description: statusCheck.description,
+            timestamp: new Date().toISOString()
+          };
+          
+          // Send confirmation email
+          try {
+            console.log("[PESAPAL CALLBACK] Sending confirmation email to", cachedBooking.email);
+            const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, confirmationData);
+            
+            if (emailResult.success) {
+              console.log("[PESAPAL CALLBACK] ✉️ Confirmation email sent successfully");
+            } else {
+              console.warn("[PESAPAL CALLBACK] ⚠️ Email sending failed:", emailResult.error);
+            }
+          } catch (emailError) {
+            console.error("[PESAPAL CALLBACK] ❌ Error sending confirmation email:", emailError.message);
+          }
+          
+          // Remove from cache after processing
+          delete bookingCache[validation.orderTrackingId];
+          console.log("[PESAPAL CALLBACK] Booking data cleared from cache");
+          
+          // TODO: In production, save payment details to database:
+          // 1. Create/Update payment record with Pesapal details
+          // 2. Update booking status to 'paid'
+          // 3. Save order tracking ID and transaction timestamp
+          // 4. Link payment to booking
+          console.log("[PESAPAL CALLBACK] (DB TODO) Payment details would be saved to database");
+        } else {
+          console.warn("[PESAPAL CALLBACK] Payment not completed. Status:", statusCheck.status);
+        }
+      } catch (statusError) {
+        console.error("[PESAPAL CALLBACK] Failed to check payment status:", statusError.message);
+      }
+    } else {
+      console.warn("[PESAPAL CALLBACK] ⚠️ No cached booking found for", validation.orderTrackingId);
+      console.warn("[PESAPAL CALLBACK] Available cache keys:", Object.keys(bookingCache));
+    }
+
+    // Always respond 200 OK to Pesapal (acknowledges receipt)
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("[PESAPAL CALLBACK] Error processing callback:", error.message);
+    res.sendStatus(200); // Still respond 200 to avoid retry loop
+  }
 });
 
 /**
