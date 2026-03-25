@@ -5,12 +5,29 @@ const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 const MpesaService = require("../services/MpesaService");
 const PesapalService = require("../services/PesapalService");
+const PesapalServiceMock = require("../services/PesapalServiceMock");
 const EmailService = require("../services/EmailService");
 const Booking = require("../models/Booking");
 
 // Initialize payment services (production or sandbox based on NODE_ENV)
 const mpesaService = new MpesaService();
-const pesapalService = new PesapalService();
+
+// Use mock Pesapal service if:
+// 1. USE_PESAPAL_MOCK environment variable is set to 'true'
+// 2. NODE_ENV is 'development' and PESAPAL_CONSUMER_KEY is not set (credentials missing)
+const useMockPesapal = process.env.USE_PESAPAL_MOCK === 'true' || 
+                       (process.env.NODE_ENV !== 'production' && !process.env.PESAPAL_CONSUMER_KEY);
+
+const pesapalService = useMockPesapal 
+  ? new PesapalServiceMock()
+  : new PesapalService();
+
+if (useMockPesapal) {
+  console.log('[PAYMENT] ⚠️  Using MOCK Pesapal service for testing (no network access)');
+  console.log('[PAYMENT] To use real Pesapal: Set PESAPAL_CONSUMER_KEY and PESAPAL_CONSUMER_SECRET in .env');
+  console.log('[PAYMENT] Or disable mock: Set USE_PESAPAL_MOCK=false in .env');
+}
+
 // Get email service instance lazily when needed
 const getEmailService = () => EmailService();
 
