@@ -15,13 +15,13 @@ const NAIROBI_ZONES = {
   },
   'westlands': {
     name: 'Westlands',
-    cost: 3500,
+    cost: 3000,
     areas: ['westlands', 'nairobi west', 'upper hill', 'kilimani'],
     coordinates: { minLat: -1.290, maxLat: -1.310, minLng: 36.790, maxLng: 36.810 }
   },
   'karen': {
     name: 'Karen/Langata',
-    cost: 3500,
+    cost: 3000,
     areas: ['karen', 'langata', 'south c', 'south b', 'ngong'],
     coordinates: { minLat: -1.330, maxLat: -1.380, minLng: 36.760, maxLng: 36.820 }
   },
@@ -33,7 +33,7 @@ const NAIROBI_ZONES = {
   },
   'southlands': {
     name: 'Southlands',
-    cost: 3500,
+    cost: 3000,
     areas: ['southlands', 'spring valley', 'nyari', 'kitisuru', 'forest edge'],
     coordinates: { minLat: -1.300, maxLat: -1.330, minLng: 36.780, maxLng: 36.810 }
   },
@@ -45,7 +45,7 @@ const NAIROBI_ZONES = {
   },
   'northlands': {
     name: 'Northlands/Parklands',
-    cost: 3500,
+    cost: 3000,
     areas: ['northlands', 'parklands', 'karura', 'ridgeways', 'gigiri', 'runda'],
     coordinates: { minLat: -1.270, maxLat: -1.295, minLng: 36.800, maxLng: 36.850 }
   },
@@ -69,7 +69,7 @@ const NAIROBI_ZONES = {
   },
   'outer_south': {
     name: 'Outer South',
-    cost: 3500,
+    cost: 3000,
     areas: ['otiende', 'kangemi', 'riruta', 'soweto', 'kikuyu'],
     coordinates: { minLat: -1.340, maxLat: -1.400, minLng: 36.700, maxLng: 36.820 }
   },
@@ -87,7 +87,7 @@ const OUTSIDE_NAIROBI_ZONES = {
     name: 'Mombasa & Coast',
     region: 'Coast Region',
     distance: '500km',
-    cost: 85000,
+    cost:80000,
     keywords: ['mombasa', 'diani', 'malindi', 'lamu', 'coast', 'kilifi', 'kwale'],
     description: 'Mombasa, Diani, Malindi, Lamu and surrounding coastal areas'
   },
@@ -119,7 +119,7 @@ const OUTSIDE_NAIROBI_ZONES = {
     name: 'Eastern Region - Meru',
     region: 'Eastern Region',
     distance: '250km',
-    cost: 42000,
+    cost: 40000,
     keywords: ['meru', 'eastern', 'embu', 'isiolo', 'machakos'],
     description: 'Meru, Embu, Isiolo, Machakos and surrounding eastern region areas'
   },
@@ -135,7 +135,7 @@ const OUTSIDE_NAIROBI_ZONES = {
     name: 'South/Far South',
     region: 'Southern Region',
     distance: '250km',
-    cost: 42000,
+    cost: 50000,
     keywords: ['narok', 'bomet', 'south', 'far south', 'maasai mara'],
     description: 'Narok, Bomet, Maasai Mara and surrounding southern region areas'
   }

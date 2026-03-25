@@ -46,8 +46,6 @@ BOOKING DETAILS:
 - Phone: ${booking.phone}
 - Email: ${booking.email}
 - Venue: ${booking.venue}
-- Tent Type: ${booking.tentType}
-- Total Amount: KES ${booking.totalAmount.toLocaleString()}
 
 PAYMENT BREAKDOWN:
 - Deposit Required (80%): KES ${depositAmount.toLocaleString()}
@@ -55,24 +53,16 @@ PAYMENT BREAKDOWN:
 
 Please proceed to checkout to complete your deposit payment.
 
-Terms and Conditions:
-You have accepted our Terms and Conditions. Please review the full terms at:
-https://bintievents.vercel.app/terms.html
-
-For any questions, please contact us at:
-Phone: +254 728 307 327
-Email: info@bintievents.com
-
 Best regards,
 Binti Events Team
         `,
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('✉️ Booking confirmation sent to:', booking.email, '(Message ID:', info.messageId, ')');
+      console.log(' Booking confirmation sent to:', booking.email, '(Message ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('❌ Error sending booking confirmation email:', err.message);
+      console.error(' Error sending booking confirmation email:', err.message);
       return { success: false, error: err.message };
     }
   }
@@ -100,46 +90,25 @@ CUSTOMER DETAILS:
 - Venue: ${booking.venue}
 
 BOOKING DETAILS:
-- Tent Type: ${booking.tentType}
-- Tent Size: ${booking.tentSize || 'N/A'}
-- Lighting: ${booking.lighting ? 'Yes' : 'No'}
-- PA Sound System: ${booking.pasound ? 'Yes' : 'No'}
-- Dance Floor: ${booking.dancefloor ? 'Yes' : 'No'}
-- Stage & Podium: ${booking.stagepodium ? 'Yes' : 'No'}
-- Welcome Signs: ${booking.welcomesigns ? 'Yes' : 'No'}
-- Transport: ${booking.transport ? 'Yes' : 'No'}
-- Decor: ${booking.decor ? 'Yes' : 'No'}
-
-PRICING:
 - Total Amount: KES ${booking.totalAmount.toLocaleString()}
 - Deposit Required (80%): KES ${depositAmount.toLocaleString()}
 - Remaining Balance (20%): KES ${(booking.totalAmount - depositAmount).toLocaleString()}
 
-PRICING BREAKDOWN:
-${JSON.stringify(booking.breakdown, null, 2)}
-
-TERMS ACCEPTANCE:
-- Terms Accepted: ${booking.termsAccepted ? 'Yes' : 'No'}
-- Accepted At: ${booking.termsAcceptedAt || 'N/A'}
-
 Status: Awaiting Payment
-
-Customer will complete their 80% deposit payment at checkout.
-Remaining 20% balance due before event date.
         `,
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('✉️ Admin notification sent (Message ID:', info.messageId, ')');
+      console.log(' Admin notification sent (Message ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('❌ Error sending admin notification:', err.message);
+      console.error(' Error sending admin notification:', err.message);
       return { success: false, error: err.message };
     }
   }
 
   /**
-   * Send contact form message (existing functionality)
+   * Send contact form message
    */
   async sendContactMessage(name, email, phone, message, subject) {
     try {
@@ -168,10 +137,10 @@ ${message}
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('✉️ Contact message sent (Message ID:', info.messageId, ')');
+      console.log(' Contact message sent (Message ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('❌ Error sending contact message:', err.message);
+      console.error(' Error sending contact message:', err.message);
       return { success: false, error: err.message };
     }
   }
@@ -197,23 +166,11 @@ BOOKING DETAILS:
 - Booking Reference: ${booking.id}
 - Transaction ID: ${transactionId}
 - Venue: ${booking.venue}
-- Tent Type: ${booking.tentType}
 
 PAYMENT DETAILS:
 - Deposit Paid (80%): KES ${Math.round(booking.totalAmount * 0.8).toLocaleString()}
 - Remaining Balance (20%): KES ${Math.round(booking.totalAmount * 0.2).toLocaleString()}
 - Total Amount: KES ${booking.totalAmount.toLocaleString()}
-
-NEXT STEPS:
-1. We will contact you to confirm final details
-2. Pay the remaining 20% balance before event date
-3. Receive setup schedule confirmation
-
-We look forward to making your event amazing!
-
-For any questions, please contact us at:
-Phone: +254 728 307 327
-Email: info@bintievents.com
 
 Best regards,
 Binti Events Team
@@ -221,10 +178,10 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('✉️ Payment confirmation sent to:', booking.email, '(Message ID:', info.messageId, ')');
+      console.log(' Payment confirmation sent to:', booking.email, '(Message ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('❌ Error sending payment confirmation:', err.message);
+      console.error(' Error sending payment confirmation:', err.message);
       return { success: false, error: err.message };
     }
   }
@@ -233,35 +190,27 @@ Binti Events Team
    * HTML template for booking confirmation email
    */
   getBookingConfirmationTemplate(booking, depositAmount, remainingAmount) {
-    const breakdownHTML = this.formatBreakdown(booking.breakdown);
-
     return `
     <!DOCTYPE html>
     <html>
     <head>
       <style>
-        body { font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; }
-        .container { max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .header { border-bottom: 3px solid #7851A9; padding-bottom: 20px; margin-bottom: 30px; text-align: center; }
-        .header h1 { color: #7851A9; margin: 0; font-size: 24px; }
-        .header p { color: #999; margin: 5px 0 0 0; font-size: 14px; }
+        body { font-family: Arial, sans-serif; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; }
+        .header { border-bottom: 3px solid #7851A9; padding-bottom: 20px; margin-bottom: 30px; }
+        .header h1 { color: #7851A9; margin: 0; }
         .section { margin-bottom: 30px; }
-        .section h2 { color: #4A7A6B; font-size: 16px; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        .section h2 { color: #4A7A6B; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .detail-row { display: flex; justify-content: space-between; padding: 8px 0; }
         .detail-label { color: #666; font-weight: 600; }
         .detail-value { color: #333; text-align: right; }
         .highlight { background-color: #f5f0ff; padding: 15px; border-radius: 5px; border-left: 4px solid #7851A9; }
-        .price-large { font-size: 18px; font-weight: bold; color: #7851A9; text-align: right; }
-        .footer { text-align: center; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999; }
-        .cta-button { display: inline-block; background-color: #D4AF37; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; font-weight: bold; text-align: center; margin-top: 20px; }
-        .terms-note { background-color: #fff3cd; padding: 12px; border-radius: 5px; border-left: 4px solid #ffc107; margin: 20px 0; font-size: 14px; color: #856404; }
       </style>
     </head>
     <body>
       <div class="container">
         <div class="header">
           <h1>Booking Confirmation</h1>
-          <p>Thank you for choosing Binti Events!</p>
         </div>
 
         <p>Dear ${booking.fullname},</p>
@@ -277,10 +226,6 @@ Binti Events Team
             <span class="detail-label">Phone:</span>
             <span class="detail-value">${booking.phone}</span>
           </div>
-          ${booking.mpesaPhone && booking.mpesaPhone !== booking.phone ? `<div class="detail-row">
-            <span class="detail-label">M-Pesa Phone:</span>
-            <span class="detail-value"><strong>${booking.mpesaPhone}</strong></span>
-          </div>` : ''}
           <div class="detail-row">
             <span class="detail-label">Email:</span>
             <span class="detail-value">${booking.email}</span>
@@ -289,28 +234,18 @@ Binti Events Team
             <span class="detail-label">Venue:</span>
             <span class="detail-value">${booking.venue}</span>
           </div>
-          <div class="detail-row">
-            <span class="detail-label">Tent Type:</span>
-            <span class="detail-value">${booking.tentType}</span>
-          </div>
-          ${booking.tentSize ? `<div class="detail-row"><span class="detail-label">Tent Size:</span><span class="detail-value">${booking.tentSize}</span></div>` : ''}
-        </div>
-
-        <div class="section">
-          <h2>Package Breakdown</h2>
-          ${breakdownHTML}
         </div>
 
         <div class="section">
           <h2>Payment Summary</h2>
           <div class="detail-row">
             <span class="detail-label">Total Amount:</span>
-            <span class="detail-value price-large">KES ${booking.totalAmount.toLocaleString()}</span>
+            <span class="detail-value">KES ${booking.totalAmount.toLocaleString()}</span>
           </div>
           <div class="highlight">
             <div class="detail-row">
               <span class="detail-label">Deposit Required (80%):</span>
-              <span class="detail-value" style="font-size: 16px; font-weight: bold; color: #7851A9;">KES ${depositAmount.toLocaleString()}</span>
+              <span class="detail-value">KES ${depositAmount.toLocaleString()}</span>
             </div>
             <div class="detail-row" style="margin-top: 10px;">
               <span class="detail-label">Balance Due (20%):</span>
@@ -319,32 +254,8 @@ Binti Events Team
           </div>
         </div>
 
-        <div class="terms-note">
-          <strong>✓ Terms Accepted:</strong> You have agreed to our Terms and Conditions. Please review the full terms at: https://bintievents.vercel.app/terms.html
-        </div>
-
-        <p style="text-align: center;">
-          <a href="https://bintievents.vercel.app/checkout.html" class="cta-button">Proceed to Payment</a>
-        </p>
-
-        <div class="section">
-          <h2>Next Steps</h2>
-          <ol>
-            <li>Complete your 80% deposit payment to secure your booking</li>
-            <li>We will contact you to confirm final event details</li>
-            <li>Pay the remaining 20% balance before your event date</li>
-            <li>Receive setup schedule and team contact information</li>
-          </ol>
-        </div>
-
-        <div class="footer">
-          <p>
-            <strong>Binti Events</strong><br>
-            Phone: +254 728 307 327<br>
-            Email: info@bintievents.com<br>
-            Nairobi, Kenya<br><br>
-            <em>Instinctively Elegant</em>
-          </p>
+        <div class="footer" style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999;">
+          <p><strong>Binti Events</strong><br>Phone: +254 728 307 327 | Email: info@bintievents.com</p>
         </div>
       </div>
     </body>
@@ -356,28 +267,25 @@ Binti Events Team
    * HTML template for admin notification
    */
   getAdminNotificationTemplate(booking, depositAmount) {
-    const breakdownHTML = this.formatBreakdown(booking.breakdown);
-
     return `
     <!DOCTYPE html>
     <html>
     <head>
       <style>
-        body { font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; }
-        .container { max-width: 700px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .header { background-color: #7851A9; color: white; padding: 20px; border-radius: 5px; margin-bottom: 30px; text-align: center; }
+        body { font-family: Arial, sans-serif; color: #333; }
+        .container { max-width: 700px; margin: 0 auto; background-color: white; padding: 30px; }
+        .header { background-color: #7851A9; color: white; padding: 20px; text-align: center; }
         .section { margin-bottom: 30px; }
-        .section h2 { color: #7851A9; font-size: 16px; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #7851A9; padding-bottom: 10px; }
-        .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        .section h2 { color: #7851A9; margin-bottom: 15px; border-bottom: 2px solid #7851A9; padding-bottom: 10px; }
+        .detail-row { display: flex; justify-content: space-between; padding: 8px 0; }
         .detail-label { color: #666; font-weight: 600; }
-        .detail-value { color: #333; text-align: right; }
-        .status-pending { background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107; }
+        .detail-value { color: #333; }
       </style>
     </head>
     <body>
       <div class="container">
         <div class="header">
-          <h1>📋 New Booking Received</h1>
+          <h1>New Booking Received</h1>
           <p>Booking Reference: <strong>${booking.id}</strong></p>
         </div>
 
@@ -391,10 +299,6 @@ Binti Events Team
             <span class="detail-label">Phone:</span>
             <span class="detail-value">${booking.phone}</span>
           </div>
-          ${booking.mpesaPhone && booking.mpesaPhone !== booking.phone ? `<div class="detail-row">
-            <span class="detail-label">M-Pesa Phone:</span>
-            <span class="detail-value"><strong>${booking.mpesaPhone}</strong></span>
-          </div>` : ''}
           <div class="detail-row">
             <span class="detail-label">Email:</span>
             <span class="detail-value">${booking.email}</span>
@@ -408,62 +312,16 @@ Binti Events Team
             <span class="detail-value">${booking.venue}</span>
           </div>
           <div class="detail-row">
-            <span class="detail-label">Tent Type:</span>
-            <span class="detail-value">${booking.tentType}</span>
-          </div>
-          ${booking.tentSize ? `<div class="detail-row"><span class="detail-label">Tent Size:</span><span class="detail-value">${booking.tentSize}</span></div>` : ''}
-          <div class="detail-row">
-            <span class="detail-label">Lighting:</span>
-            <span class="detail-value">${booking.lighting ? '✓ Yes' : 'No'}</span>
+            <span class="detail-label">Total Amount:</span>
+            <span class="detail-value">KES ${booking.totalAmount.toLocaleString()}</span>
           </div>
           <div class="detail-row">
-            <span class="detail-label">PA Sound System:</span>
-            <span class="detail-value">${booking.pasound ? '✓ Yes' : 'No'}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Dance Floor:</span>
-            <span class="detail-value">${booking.dancefloor ? '✓ Yes' : 'No'}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Stage & Podium:</span>
-            <span class="detail-value">${booking.stagepodium ? '✓ Yes' : 'No'}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Welcome Signs:</span>
-            <span class="detail-value">${booking.welcomesigns ? '✓ Yes' : 'No'}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Transport:</span>
-            <span class="detail-value">${booking.transport ? '✓ Yes' : 'No'}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Decor:</span>
-            <span class="detail-value">${booking.decor ? '✓ Yes' : 'No'}</span>
+            <span class="detail-label">Deposit (80%):</span>
+            <span class="detail-value">KES ${depositAmount.toLocaleString()}</span>
           </div>
         </div>
 
-        <div class="section">
-          <h2>Pricing Breakdown</h2>
-          ${breakdownHTML}
-          <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #ddd;">
-            <div class="detail-row">
-              <span class="detail-label"><strong>Total Amount:</strong></span>
-              <span class="detail-value"><strong>KES ${booking.totalAmount.toLocaleString()}</strong></span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Deposit (80%):</span>
-              <span class="detail-value">KES ${depositAmount.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="status-pending">
-          <strong>⏳ Status:</strong> Awaiting Payment<br>
-          <strong>Terms Accepted:</strong> ${booking.termsAccepted ? '✓ Yes' : 'No'}<br>
-          <strong>Accepted At:</strong> ${booking.termsAcceptedAt ? new Date(booking.termsAcceptedAt).toLocaleString() : 'N/A'}
-        </div>
-
-        <p style="color: #666; font-size: 12px; margin-top: 30px;">
+        <p style="color: #666; font-size: 12px;">
           This is an automated notification from the Binti Events booking system.
         </p>
       </div>
@@ -481,9 +339,9 @@ Binti Events Team
     <html>
     <head>
       <style>
-        body { font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; }
-        .container { max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .header { background-color: #4CAF50; color: white; padding: 20px; border-radius: 5px; margin-bottom: 30px; text-align: center; }
+        body { font-family: Arial, sans-serif; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
         .section { margin-bottom: 30px; }
         .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
         .detail-label { color: #666; font-weight: 600; }
@@ -493,12 +351,12 @@ Binti Events Team
     <body>
       <div class="container">
         <div class="header">
-          <h1>✓ Payment Received</h1>
+          <h1>Payment Received</h1>
           <p>Your booking is confirmed!</p>
         </div>
 
         <p>Dear ${booking.fullname},</p>
-        <p>Your payment has been successfully processed. Your booking is now confirmed!</p>
+        <p>Your payment has been successfully processed.</p>
 
         <div class="section">
           <h2>Payment Details</h2>
@@ -520,7 +378,7 @@ Binti Events Team
           </div>
         </div>
 
-        <div class="footer" style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999;">
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999;">
           <p><strong>Binti Events</strong><br>Phone: +254 728 307 327 | Email: info@bintievents.com</p>
         </div>
       </div>
@@ -528,38 +386,16 @@ Binti Events Team
     </html>
     `;
   }
-
-  /**
-   * Format booking breakdown for email display
-   */
-  formatBreakdown(breakdown) {
-    if (!breakdown) return '<p>N/A</p>';
-
-    let html = '';
-    if (breakdown.tent) {
-      html += `<div class="detail-row"><span class="detail-label">Tent ${breakdown.tent.type}:</span><span class="detail-value">KES ${breakdown.tent.cost?.toLocaleString() || 'N/A'}</span></div>`;
-    }
-    if (breakdown.lighting > 0) {
-      html += `<div class="detail-row"><span class="detail-label">Lighting:</span><span class="detail-value">KES ${breakdown.lighting.toLocaleString()}</span></div>`;
-    }
-    if (breakdown.transport?.cost > 0) {
-      html += `<div class="detail-row"><span class="detail-label">Transport:</span><span class="detail-value">KES ${breakdown.transport.cost.toLocaleString()}</span></div>`;
-    }
-    if (breakdown.pasound > 0) {
-      html += `<div class="detail-row"><span class="detail-label">PA Sound System:</span><span class="detail-value">KES ${breakdown.pasound.toLocaleString()}</span></div>`;
-    }
-    if (breakdown.dancefloor > 0) {
-      html += `<div class="detail-row"><span class="detail-label">Dance Floor:</span><span class="detail-value">KES ${breakdown.dancefloor.toLocaleString()}</span></div>`;
-    }
-    if (breakdown.stagepodium > 0) {
-      html += `<div class="detail-row"><span class="detail-label">Stage & Podium:</span><span class="detail-value">KES ${breakdown.stagepodium.toLocaleString()}</span></div>`;
-    }
-    if (breakdown.welcomesigns > 0) {
-      html += `<div class="detail-row"><span class="detail-label">Welcome Signs:</span><span class="detail-value">KES ${breakdown.welcomesigns.toLocaleString()}</span></div>`;
-    }
-
-    return html || '<p>Basic package</p>';
-  }
 }
 
-module.exports = new EmailService();
+// Lazy instantiation - avoid blocking startup with email service
+let emailServiceInstance = null;
+
+function getEmailService() {
+  if (!emailServiceInstance) {
+    emailServiceInstance = new EmailService();
+  }
+  return emailServiceInstance;
+}
+
+module.exports = getEmailService;
