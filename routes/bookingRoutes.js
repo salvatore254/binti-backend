@@ -5,6 +5,7 @@ const TransportService = require("../services/TransportService");
 const Booking = require("../models/Booking");
 const EmailService = require("../services/EmailService");
 const { v4: uuidv4 } = require("uuid");
+const logger = require("../utils/logger");
 
 /**
  * POST /api/bookings/calculate
@@ -141,14 +142,24 @@ router.post("/calculate", (req, res) => {
         return res.status(400).json({ success: false, message: "Location is required to calculate transport cost." });
       }
 
-      const transportCalc = TransportService.calculateTransportCost(location);
-      total += transportCalc.transportCost;
-      breakdown.transport = {
-        cost: transportCalc.transportCost,
-        zone: transportCalc.zoneName,
-        serviceArea: transportCalc.serviceArea,
-        zoneInfo: transportCalc.zoneInfo
-      };
+      try {
+        logger.info(`[/calculate] Calculating transport cost for location: "${location}"`);
+        const transportCalc = TransportService.calculateTransportCost(location);
+        total += transportCalc.transportCost;
+        breakdown.transport = {
+          cost: transportCalc.transportCost,
+          zone: transportCalc.zoneName,
+          serviceArea: transportCalc.serviceArea,
+          zoneInfo: transportCalc.zoneInfo
+        };
+        logger.info(`[/calculate] Transport cost resolved — zone: "${transportCalc.zoneName}", cost: ${transportCalc.transportCost}`);
+      } catch (transportErr) {
+        logger.error("[/calculate] TransportService.calculateTransportCost() threw an error", transportErr);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to calculate transport cost. Please try again or contact support."
+        });
+      }
     }
 
     // SITE VISIT: Removed - users now request via contact form
@@ -156,8 +167,11 @@ router.post("/calculate", (req, res) => {
 
     res.json({ success: true, total, breakdown });
   } catch (err) {
-    console.error("Error calculating booking:", err);
-    res.status(500).json({ success: false, message: "Server error calculating booking." });
+    logger.error(`[/calculate] Unhandled error in calculate endpoint — ${err.message}`, err);
+    // Guard against sending a response if headers were already flushed
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: "Server error calculating booking." });
+    }
   }
 });
 
@@ -409,14 +423,25 @@ router.post("/confirm", async (req, res) => {
       if (!location || typeof location !== "string") {
         return res.status(400).json({ success: false, message: "Location is required to calculate transport cost." });
       }
-      const transportCalc = TransportService.calculateTransportCost(location);
-      total += transportCalc.transportCost;
-      breakdown.transport = {
-        cost: transportCalc.transportCost,
-        zone: transportCalc.zoneName,
-        serviceArea: transportCalc.serviceArea,
-        zoneInfo: transportCalc.zoneInfo
-      };
+
+      try {
+        logger.info(`[/confirm] Calculating transport cost for location: "${location}"`);
+        const transportCalc = TransportService.calculateTransportCost(location);
+        total += transportCalc.transportCost;
+        breakdown.transport = {
+          cost: transportCalc.transportCost,
+          zone: transportCalc.zoneName,
+          serviceArea: transportCalc.serviceArea,
+          zoneInfo: transportCalc.zoneInfo
+        };
+        logger.info(`[/confirm] Transport cost resolved — zone: "${transportCalc.zoneName}", cost: ${transportCalc.transportCost}`);
+      } catch (transportErr) {
+        logger.error("[/confirm] TransportService.calculateTransportCost() threw an error", transportErr);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to calculate transport cost. Please try again or contact support."
+        });
+      }
     }
 
     // Add-ons pricing
@@ -503,12 +528,14 @@ router.post("/confirm", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Error confirming booking:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error confirming booking. Please try again.",
-      error: err.message
-    });
+    logger.error(`[/confirm] Unhandled error in confirm endpoint — ${err.message}`, err);
+    // Guard against sending a response if headers were already flushed
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "Server error confirming booking. Please try again."
+      });
+    }
   }
 });
 
