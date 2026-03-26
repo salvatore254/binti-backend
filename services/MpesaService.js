@@ -136,7 +136,7 @@ class MpesaService {
         PartyA: normalizedPhone,
         PartyB: this.shortcode,
         PhoneNumber: normalizedPhone,
-        CallBackURL: `${process.env.BACKEND_URL || 'https://binti-backend-production.up.railway.app'}/api/payments/mpesa-callback`,
+        CallBackURL: `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/mpesa-callback`,
         AccountReference: accountRef.toString().substring(0, 12), // Max 12 characters
         TransactionDesc: description.substring(0, 40) // Max 40 characters
       };
