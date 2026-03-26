@@ -14,6 +14,17 @@ const { initializeConnection: initializeDatabase } = require("./database/connect
 const logger = require("./utils/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 
+// Global error handlers for unhandled rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error(`Unhandled Promise Rejection: ${reason}`);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  logger.error(`Uncaught Exception: ${error.message}`);
+});
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -67,7 +78,7 @@ const initializeServer = async () => {
   try {
     // Initialize MongoDB connection
     await initializeDatabase();
-    logger.info('✅ MongoDB connected');
+    logger.info('MongoDB connected');
     
     // Verify SMTP is configured
     const emailUser = process.env.EMAIL_USER;
