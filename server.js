@@ -68,6 +68,22 @@ app.get("/api/health", (req, res) => {
   }
 });
 
+// Root route - API info
+app.get("/", (req, res) => {
+  res.json({
+    name: "Binti Events Backend API",
+    version: "1.0.0",
+    status: "running",
+    endpoints: {
+      health: "/api/health",
+      bookings: "/api/bookings",
+      payments: "/api/payments",
+      contact: "/api/contact"
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 404 handler
 app.use((req, res, next) => {
   console.log(`[404] ${req.method} ${req.path}`);
