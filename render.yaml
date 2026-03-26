@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: binti-events-backend
+    name: backend
     env: node
     plan: free
     buildCommand: npm install
@@ -28,6 +28,8 @@ services:
         value: ${MPESA_CONSUMER_KEY}
       - key: MPESA_CONSUMER_SECRET
         value: ${MPESA_CONSUMER_SECRET}
+      - key: MPESA_SHORTCODE
+        value: ${MPESA_SHORTCODE}
       - key: MPESA_CALLBACK_URL
         value: ${MPESA_CALLBACK_URL}
       - key: MPESA_PASSKEY
