@@ -46,49 +46,61 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("CORS policy: origin not allowed"));
+      // Don't throw error - just don't set CORS headers (browser will block anyway)
+      console.warn(`[CORS] Origin not allowed: ${origin}`);
+      callback(null, false);
     }
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 200
 };
 
-// Middleware with error wrapping
+// Core middleware (must not throw errors)
 app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// Add request logging middleware
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
-});
 
 // api routes
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/contact", contactRoutes);
 
-// Health check endpoint (useful for deployment verification)
+// Health check endpoint
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  try {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  } catch (e) {
+    console.error("[HEALTH] Error:", e.message);
+    res.status(500).json({ status: "error", message: e.message });
+  }
 });
 
-// 404 handler - convert to proper error for errorHandler
-app.use((req, res, next) => {
-  const error = new Error(`Route not found: ${req.method} ${req.path}`);
-  error.statusCode = 404;
-  next(error);
+// Simple 404 handler
+app.use((req, res) => {
+  console.error(`[404] ${req.method} ${req.path} not found`);
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.path}`
+  });
 });
 
-// Global error handling middleware (MUST be last)
+// Error handling middleware - MUST be last middleware and have 4 parameters
 app.use((err, req, res, next) => {
   console.error(`[ERROR] ${req.method} ${req.path}:`, {
     message: err.message,
-    stack: err.stack,
-    statusCode: err.statusCode
+    statusCode: err.statusCode || 500
   });
+  
+  // Apply CORS headers to error response
+  const origin = req.get('Origin');
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin || '*');
+    res.set('Access-Control-Allow-Credentials', 'true');
+    res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  }
   
   const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
