@@ -555,7 +555,6 @@ router.get("/pesapal-iframe", async (req, res) => {
     }
 
     // Fetch the booking from database
-    const Booking = require("../models/Booking");
     const booking = await Booking.findById(bookingId);
 
     if (!booking) {
