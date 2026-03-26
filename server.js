@@ -27,6 +27,12 @@ process.on('uncaughtException', (error) => {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// DEBUG: Log every incoming request
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 // CORS configuration for separate frontend/backend hosting
 const allowedOrigins = [
   "http://localhost:3000",      // Local development frontend (port 3000)
@@ -40,17 +46,10 @@ const allowedOrigins = [
 ].filter(Boolean); // Remove undefined values
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Always return true for OPTIONS/preflight to work properly
-    // Security is enforced by checking origin on specific endpoints if needed
-    callback(null, true);
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Accept"],
-  optionsSuccessStatus: 200,
-  preflightContinue: false,
-  maxAge: 86400
+  origin: "https://bintievents.vercel.app",  // Explicit production origin
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 200
 };
 
 // Core middleware (must not throw errors)
@@ -59,8 +58,18 @@ app.use(cors(corsOptions));
 // Explicit OPTIONS handler for preflight requests
 app.options('*', cors(corsOptions));
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// Body parsing with size limits
+app.use(bodyParser.json({ limit: "1mb" }));
+app.use(bodyParser.urlencoded({ extended: true, limit: "1mb" }));
+
+// Fallback handler for OPTIONS requests
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    console.log("[OPTIONS] Fallback handler - returning 200");
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // api routes
 app.use("/api/bookings", bookingRoutes);
@@ -77,8 +86,9 @@ app.get("/api/health", (req, res) => {
   }
 });
 
-// Simple 404 handler (but don't send response yet - let error handler or next middleware handle it)
+// 404 handler
 app.use((req, res, next) => {
+  console.log(`[404] ${req.method} ${req.path}`);
   const err = new Error(`Route not found: ${req.method} ${req.path}`);
   err.statusCode = 404;
   next(err);  // Pass to error handler instead of responding directly
