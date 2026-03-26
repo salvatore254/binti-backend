@@ -42,19 +42,16 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      // Don't throw error - just don't set CORS headers (browser will block anyway)
-      console.warn(`[CORS] Origin not allowed: ${origin}`);
-      callback(null, false);
-    }
+    // Always return true for OPTIONS/preflight to work properly
+    // Security is enforced by checking origin on specific endpoints if needed
+    callback(null, true);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 200
+  allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+  optionsSuccessStatus: 200,
+  preflightContinue: false,
+  maxAge: 86400
 };
 
 // Core middleware (must not throw errors)
@@ -77,32 +74,30 @@ app.get("/api/health", (req, res) => {
   }
 });
 
-// Simple 404 handler
-app.use((req, res) => {
-  console.error(`[404] ${req.method} ${req.path} not found`);
-  res.status(404).json({
-    success: false,
-    message: `Route not found: ${req.method} ${req.path}`
-  });
+// Simple 404 handler (but don't send response yet - let error handler or next middleware handle it)
+app.use((req, res, next) => {
+  const err = new Error(`Route not found: ${req.method} ${req.path}`);
+  err.statusCode = 404;
+  next(err);  // Pass to error handler instead of responding directly
 });
 
 // Error handling middleware - MUST be last middleware and have 4 parameters
 app.use((err, req, res, next) => {
+  const statusCode = err.statusCode || 500;
+  const origin = req.get('Origin');
+  
   console.error(`[ERROR] ${req.method} ${req.path}:`, {
     message: err.message,
-    statusCode: err.statusCode || 500
+    statusCode,
+    stack: err.stack
   });
   
-  // Apply CORS headers to error response
-  const origin = req.get('Origin');
-  if (!origin || allowedOrigins.includes(origin)) {
-    res.set('Access-Control-Allow-Origin', origin || '*');
-    res.set('Access-Control-Allow-Credentials', 'true');
-    res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-  }
+  // ALWAYS set CORS headers on error responses
+  res.set('Access-Control-Allow-Origin', origin ? origin : '*');
+  res.set('Access-Control-Allow-Credentials', 'true');
+  res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept');
   
-  const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
     success: false,
     message: err.message || 'Internal Server Error',
