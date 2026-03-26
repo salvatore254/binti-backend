@@ -5,6 +5,9 @@ const TransportService = require("../services/TransportService");
 const Booking = require("../models/Booking");
 const { v4: uuidv4 } = require("uuid");
 
+// DIAGNOSTIC: Log that routes file loaded successfully
+console.log("✅ bookingRoutes.js loaded successfully");
+
 // Note: EmailService is only imported when confirm endpoint is called (lazy load)
 
 /**
@@ -130,14 +133,32 @@ router.post("/calculate", (req, res) => {
         return res.status(400).json({ success: false, message: "Location is required to calculate transport cost." });
       }
 
-      const transportCalc = TransportService.calculateTransportCost(location);
-      total += transportCalc.transportCost;
-      breakdown.transport = {
-        cost: transportCalc.transportCost,
-        zone: transportCalc.zoneName,
-        serviceArea: transportCalc.serviceArea,
-        zoneInfo: transportCalc.zoneInfo
-      };
+      try {
+        console.log("🔍 Calculating transport for location:", location);
+        
+        const transportCalc = TransportService.calculateTransportCost(location);
+        
+        console.log("✅ Transport calculation succeeded:", transportCalc);
+
+        total += transportCalc.transportCost;
+        breakdown.transport = {
+          cost: transportCalc.transportCost,
+          zone: transportCalc.zoneName,
+          serviceArea: transportCalc.serviceArea,
+          zoneInfo: transportCalc.zoneInfo
+        };
+      } catch (transportErr) {
+        console.error("🚨 TransportService crash:", {
+          message: transportErr.message,
+          stack: transportErr.stack,
+          location: location
+        });
+
+        return res.status(500).json({
+          success: false,
+          message: "Transport calculation failed: " + transportErr.message
+        });
+      }
     }
 
     // SITE VISIT: Removed - users now request via contact form
