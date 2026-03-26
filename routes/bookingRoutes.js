@@ -486,6 +486,10 @@ router.post("/confirm", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
+    // Save booking to MongoDB
+    await booking.save();
+    console.log(`✅ Booking saved to database with ID: ${bookingId}`);
+
     // Send confirmation emails (non-blocking - don't wait for email before responding)
     // Email failures should not fail the entire booking
     console.log("Booking confirmed:");
@@ -514,6 +518,7 @@ router.post("/confirm", async (req, res) => {
     res.json({
       success: true,
       message: "Booking confirmed! Confirmation emails have been sent.",
+      bookingId: booking._id, // Explicitly provide booking ID at top level
       booking: booking.toJSON(),
       depositAmount: booking.depositAmount,
       remainingAmount: booking.remainingAmount,
@@ -529,6 +534,96 @@ router.post("/confirm", async (req, res) => {
       success: false,
       message: "Server error confirming booking. Please try again.",
       error: err.message
+    });
+  }
+});
+
+/**
+ * GET /api/bookings/pesapal-iframe
+ * Fetch booking data and initialize Pesapal payment
+ * Returns the Pesapal iframe URL for displaying the payment form
+ */
+router.get("/pesapal-iframe", async (req, res) => {
+  try {
+    const { bookingId } = req.query;
+
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking ID is required"
+      });
+    }
+
+    // Fetch the booking from database
+    const Booking = require("../models/Booking");
+    const booking = await Booking.findById(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found"
+      });
+    }
+
+    console.log(`[BOOKING] Fetched booking for Pesapal iframe: ${bookingId}`);
+    console.log(`[BOOKING] Booking details:`, {
+      fullname: booking.fullname,
+      email: booking.email,
+      totalAmount: booking.totalAmount,
+      depositAmount: booking.depositAmount
+    });
+
+    // Initialize Pesapal payment with booking details
+    const { v4: uuidv4 } = require("uuid");
+    const orderRef = `ORDER_${bookingId}_${uuidv4().substr(0, 8)}`;
+
+    // Initialize payment service
+    const useMockPesapal = process.env.USE_PESAPAL_MOCK === 'true';
+    const PesapalService = useMockPesapal 
+      ? require("../services/PesapalServiceMock")
+      : require("../services/PesapalService");
+    
+    const pesapalService = new PesapalService();
+
+    // Create payment order
+    const paymentResult = await pesapalService.createOrder({
+      amount: booking.depositAmount, // Use deposit amount (80%)
+      currency: 'KES',
+      orderRef: orderRef,
+      description: `Binti Events Booking - ${booking.fullname}`,
+      email: booking.email,
+      phone: booking.phone,
+      firstName: booking.fullname.split(' ')[0] || 'Customer',
+      lastName: booking.fullname.split(' ').slice(1).join(' ') || 'Name'
+    });
+
+    console.log(`[BOOKING] Pesapal order created:`, {
+      orderRef,
+      orderTrackingId: paymentResult.orderTrackingId,
+      iframeUrl: paymentResult.iframe_url?.substring(0, 50) + '...'
+    });
+
+    // Return iframe data to frontend
+    res.json({
+      success: true,
+      iframe_url: paymentResult.iframe_url,
+      orderTrackingId: paymentResult.orderTrackingId,
+      orderRef: orderRef,
+      booking: {
+        id: booking._id,
+        fullname: booking.fullname,
+        email: booking.email,
+        totalAmount: booking.totalAmount,
+        depositAmount: booking.depositAmount,
+        remainingAmount: booking.remainingAmount
+      }
+    });
+
+  } catch (error) {
+    console.error("[BOOKING] Error initializing Pesapal iframe:", error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to initialize Pesapal payment"
     });
   }
 });

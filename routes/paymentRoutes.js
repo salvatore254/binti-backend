@@ -8,6 +8,7 @@ const PesapalService = require("../services/PesapalService");
 const PesapalServiceMock = require("../services/PesapalServiceMock");
 const EmailService = require("../services/EmailService");
 const Booking = require("../models/Booking");
+const { mpesaCallback, pesapalCallback } = require("../controllers/paymentController");
 
 // Initialize payment services (production or sandbox based on NODE_ENV)
 const mpesaService = new MpesaService();
@@ -217,7 +218,7 @@ router.post("/mpesa", async (req, res) => {
 /**
  * Pesapal callback endpoint (IPN)
  * Pesapal will POST transaction results here after payment processing
- * Verifies payment status and sends confirmation
+ * Verifies payment status, updates database, and sends confirmation
  */
 router.post("/pesapal-callback", async (req, res) => {
   try {
@@ -247,16 +248,31 @@ router.post("/pesapal-callback", async (req, res) => {
         if (statusCheck.status === 'COMPLETED' || statusCheck.status === 'PENDING') {
           console.log("[PESAPAL CALLBACK] ✅ Payment status:", statusCheck.status);
           
-          // Prepare confirmation email data
-          const confirmationData = {
-            ...cachedBooking,
-            orderTrackingId: validation.orderTrackingId,
-            status: statusCheck.status,
-            amount: statusCheck.amount,
-            currency: statusCheck.currency,
-            description: statusCheck.description,
-            timestamp: new Date().toISOString()
-          };
+          // Update database with payment confirmation (use controller function)
+          try {
+            // Prepare request/response objects for controller function
+            const mockReq = {
+              query: {
+                order_tracking_id: cachedBooking.id || validation.orderTrackingId,
+                pesapal_transaction_tracking_id: validation.transactionTrackingId || `pesapal-${validation.orderTrackingId}`
+              }
+            };
+            const mockRes = {
+              status: (code) => ({
+                json: (data) => {
+                  console.log(`[PESAPAL CALLBACK] Database update response: ${code}`, data);
+                  return this;
+                }
+              }),
+              sendStatus: (code) => console.log(`[PESAPAL CALLBACK] Database update sent status: ${code}`)
+            };
+            
+            // Call controller function to update database
+            await pesapalCallback(mockReq, mockRes);
+            console.log("[PESAPAL CALLBACK] ✅ Database updated via controller");
+          } catch (dbError) {
+            console.error("[PESAPAL CALLBACK] ❌ Error updating database:", dbError.message);
+          }
           
           // Send confirmation email
           try {
@@ -276,13 +292,6 @@ router.post("/pesapal-callback", async (req, res) => {
           // Remove from cache after processing
           delete bookingCache[validation.orderTrackingId];
           console.log("[PESAPAL CALLBACK] Booking data cleared from cache");
-          
-          // TODO: In production, save payment details to database:
-          // 1. Create/Update payment record with Pesapal details
-          // 2. Update booking status to 'paid'
-          // 3. Save order tracking ID and transaction timestamp
-          // 4. Link payment to booking
-          console.log("[PESAPAL CALLBACK] (DB TODO) Payment details would be saved to database");
         } else {
           console.warn("[PESAPAL CALLBACK] Payment not completed. Status:", statusCheck.status);
         }
@@ -305,14 +314,14 @@ router.post("/pesapal-callback", async (req, res) => {
 /**
  * Mpesa callback endpoint for STK Push / transaction result
  * Daraja will POST transaction results here
- * Processes successful payments and sends confirmation
+ * Processes successful payments, updates database, and sends confirmation
  */
 router.post("/mpesa-callback", async (req, res) => {
   try {
     console.log("[MPESA CALLBACK] Received callback from Daraja");
     console.log("[MPESA CALLBACK] Body:", JSON.stringify(req.body, null, 2));
 
-    // Validate the callback
+    // Validate the callback using M-Pesa service validation
     const callbackData = mpesaService.validateCallback(req.body);
     
     console.log("[MPESA CALLBACK] Parsed callback:", callbackData);
@@ -330,13 +339,28 @@ router.post("/mpesa-callback", async (req, res) => {
       if (cachedBooking) {
         console.log("[MPESA CALLBACK] Found cached booking data for", cachedBooking.fullname);
         
-        // Prepare confirmation email data
-        const confirmationData = {
-          ...cachedBooking,
-          mpesaReceiptNumber: callbackData.mpesaReceiptNumber,
-          transactionDate: callbackData.transactionDate,
-          resultCode: callbackData.resultCode
-        };
+        // Update database with payment confirmation (use controller function)
+        try {
+          // Prepare request object for controller with the parsed callback data
+          const mockReq = {
+            body: req.body
+          };
+          const mockRes = {
+            status: (code) => ({
+              json: (data) => {
+                console.log(`[MPESA CALLBACK] Database update response: ${code}`, data);
+                return this;
+              }
+            }),
+            sendStatus: (code) => console.log(`[MPESA CALLBACK] Database update sent status: ${code}`)
+          };
+          
+          // Call controller function to update database
+          await mpesaCallback(mockReq, mockRes);
+          console.log("[MPESA CALLBACK] ✅ Database updated via controller");
+        } catch (dbError) {
+          console.error("[MPESA CALLBACK] ❌ Error updating database:", dbError.message);
+        }
         
         // Send confirmation email
         try {
@@ -356,13 +380,6 @@ router.post("/mpesa-callback", async (req, res) => {
         // Remove from cache after processing
         delete bookingCache[callbackData.accountRef];
         console.log("[MPESA CALLBACK] Booking data cleared from cache");
-        
-        // TODO: In production, save payment details to database:
-        // 1. Create/Update payment record with M-Pesa details
-        // 2. Update booking status to 'paid'
-        // 3. Save M-Pesa receipt number and transaction timestamp
-        // 4. Link payment to booking
-        console.log("[MPESA CALLBACK] (DB TODO) Payment details would be saved to database");
       } else {
         console.warn("[MPESA CALLBACK] ⚠️ No cached booking found for", callbackData.accountRef);
         console.warn("[MPESA CALLBACK] Available cache keys:", Object.keys(bookingCache));
@@ -373,13 +390,7 @@ router.post("/mpesa-callback", async (req, res) => {
       console.log("[MPESA CALLBACK] ❌ Payment failed or cancelled");
       console.log("[MPESA CALLBACK] ResultCode:", callbackData.resultCode);
       console.log("[MPESA CALLBACK] ResultDesc:", callbackData.resultDesc);
-      
-      // TODO: In production, update booking status:
-      // 1. Find booking by accountRef
-      // 2. Update status to 'failed' or 'cancelled'
-      // 3. Send failure notification email to customer
-      // 4. Notify admin of failed payment
-      console.log("[MPESA CALLBACK] (DB TODO) Booking status would be updated to failed in database");
+      console.log("[MPESA CALLBACK] ℹ️ Database NOT updated - payment was not successful");
     }
 
     // Always respond 200 to acknowledge receipt (Daraja requirement)

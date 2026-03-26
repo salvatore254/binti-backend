@@ -13,8 +13,8 @@ const { v4: uuidv4 } = require('uuid');
 const tentConfigSchema = new mongoose.Schema({
   tentType: {
     type: String,
-    enum: ['stretch', 'aframe', 'marquee', 'bell'],
-    required: true,
+    enum: ['stretch', 'aframe', 'marquee', 'bell', 'cheese', 'b-line', 'bline', 'a-frame'],
+    default: 'stretch',
   },
   tentSize: String,
   sections: Number, // For a-frame tents
@@ -22,6 +22,9 @@ const tentConfigSchema = new mongoose.Schema({
     type: Number,
     default: 1,
   },
+  type: String, // Alternative field name used by frontend (get resolved to tentType on save)
+  size: String, // Alternative field name used by frontend
+  color: String, // For cheese tents
 }, { _id: false });
 
 /**
@@ -46,7 +49,8 @@ const bookingSchema = new mongoose.Schema({
   },
   mpesaPhone: {
     type: String,
-    required: true,
+    required: false, // Will be conditionally required in pre-save hook if paymentMethod is 'mpesa'
+    default: '',
   },
   email: {
     type: String,
@@ -166,12 +170,39 @@ const bookingSchema = new mongoose.Schema({
   timestamps: { currentTime: () => new Date() }, // Auto-updates updatedAt
 });
 
-// Middleware to calculate deposit and remaining amounts before saving
+// Middleware to normalize tent configs and calculate deposit before saving
 bookingSchema.pre('save', function(next) {
+  // Normalize tentConfigs from frontend format to schema format
+  if (this.tentConfigs && Array.isArray(this.tentConfigs)) {
+    this.tentConfigs = this.tentConfigs.map(config => {
+      // Handle both frontend field names (type, size) and schema names (tentType, tentSize)
+      const normalized = {
+        tentType: config.tentType || config.type || 'stretch',
+        tentSize: config.tentSize || config.size,
+        sections: config.sections,
+        quantity: config.quantity || 1,
+        color: config.color
+      };
+      
+      // Remove undefined properties
+      Object.keys(normalized).forEach(key => normalized[key] === undefined && delete normalized[key]);
+      return normalized;
+    });
+  }
+
+  // Validate mpesaPhone is required only for M-Pesa payments
+  if (this.paymentMethod === 'mpesa' && (!this.mpesaPhone || !this.mpesaPhone.trim())) {
+    const err = new Error('mpesaPhone is required for M-Pesa payments');
+    err.name = 'ValidationError';
+    return next(err);
+  }
+
+  // Calculate deposit and remaining amounts
   if (this.totalAmount) {
     this.depositAmount = Math.round(this.totalAmount * 0.8);
     this.remainingAmount = Math.round(this.totalAmount * 0.2);
   }
+  
   next();
 });
 

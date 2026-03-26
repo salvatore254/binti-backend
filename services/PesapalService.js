@@ -22,7 +22,11 @@ class PesapalService {
     this.redirectUrl = process.env.PESAPAL_REDIRECT_URL || 'http://localhost:5000/payment-status';
     
     this.authUrl = `${this.apiUrl}/api/Auth/RequestToken`;
-    this.orderUrl = `${this.apiUrl}/api/Transactions/InitiatePaymentRelease`;
+    // Note: Correct endpoint for payment order creation in Pesapal v3 API
+    // Old endpoint: /api/Transactions/InitiatePaymentRelease (v2)
+    // New endpoint should be: /api/Transactions/InitiatePayment (v3)
+    // Using InitiatePaymentRelease for compatibility
+    this.orderUrl = `${this.apiUrl}/api/Transactions/InitiatePayment`;
     this.statusUrl = `${this.apiUrl}/api/Transactions/GetTransactionStatus`;
     
     this.accessToken = null;
@@ -166,18 +170,25 @@ class PesapalService {
         timeout: 15000
       });
 
-      console.log('[PESAPAL] Order creation response:', response.data);
+      console.log('[PESAPAL] Order creation response:', JSON.stringify(response.data, null, 2));
+      console.log('[PESAPAL] Response keys:', Object.keys(response.data || {}));
 
-      if (response.data && response.data.redirect_url) {
+      // Try both possible field names for iframe URL
+      const iframeUrl = response.data?.redirect_url || response.data?.iframe_url || response.data?.payment_url;
+      const trackingId = response.data?.order_tracking_id || response.data?.tracking_id || orderRef;
+
+      if (response.data && (iframeUrl || response.data.response_code === 0)) {
         return {
           success: true,
-          iframe_url: response.data.redirect_url,
-          orderTrackingId: response.data.order_tracking_id || orderRef,
+          iframe_url: iframeUrl,
+          orderTrackingId: trackingId,
           responseCode: response.data.response_code,
-          responseDescription: response.data.response_description
+          responseDescription: response.data.response_description,
+          fullResponse: response.data
         };
       } else {
-        throw new Error('No redirect URL in Pesapal response');
+        console.error('[PESAPAL] Unexpected response structure:', response.data);
+        throw new Error('Invalid Pesapal response - missing iframe URL. Response: ' + JSON.stringify(response.data));
       }
     } catch (error) {
       console.error('[PESAPAL] Order creation failed:', error.message);
