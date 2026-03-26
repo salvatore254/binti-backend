@@ -16,12 +16,12 @@ const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 
 // Global error handlers for unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
   logger.error(`Unhandled Promise Rejection: ${reason}`);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
+  console.error(' Uncaught Exception:', error);
   logger.error(`Uncaught Exception: ${error.message}`);
 });
 
@@ -54,10 +54,16 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-// middleware
+// Middleware with error wrapping
 app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
 
 // api routes
 app.use("/api/bookings", bookingRoutes);
@@ -69,9 +75,28 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Global error handling middleware (MUST be after all routes)
-app.use(notFoundHandler);
-app.use(errorHandler);
+// 404 handler - convert to proper error for errorHandler
+app.use((req, res, next) => {
+  const error = new Error(`Route not found: ${req.method} ${req.path}`);
+  error.statusCode = 404;
+  next(error);
+});
+
+// Global error handling middleware (MUST be last)
+app.use((err, req, res, next) => {
+  console.error(`[ERROR] ${req.method} ${req.path}:`, {
+    message: err.message,
+    stack: err.stack,
+    statusCode: err.statusCode
+  });
+  
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json({
+    success: false,
+    message: err.message || 'Internal Server Error',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Initialize database and start server
 const initializeServer = async () => {
