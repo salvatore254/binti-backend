@@ -5,7 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "build": "echo 'Build complete'",
+    "netlify": "netlify functions:build",
+    "netlify:dev": "netlify dev"
   },
   "keywords": [],
   "author": "Binti Tents & Events",
