@@ -13,7 +13,7 @@
     NODE_ENV = "production"
 
 # Function configuration
-[[functions]]
+[functions]
   node_bundler = "esbuild"
 
 # Redirect all /api/* requests to the appropriate functions
