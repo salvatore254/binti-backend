@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: binti-events-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        scope: all
+      - key: PESAPAL_CONSUMER_KEY
+        scope: all
+      - key: PESAPAL_CONSUMER_SECRET
+        scope: all
+      - key: PESAPAL_API_URL
+        value: https://sandbox.pesapal.com
+      - key: PESAPAL_CALLBACK_URL
+        scope: all
+      - key: USE_PESAPAL_MOCK
+        value: "false"
+      - key: MPESA_CONSUMER_KEY
+        scope: all
+      - key: MPESA_CONSUMER_SECRET
+        scope: all
+      - key: MPESA_CALLBACK_URL
+        scope: all
+      - key: MPESA_PASSKEY
+        scope: all
+      - key: EMAIL_USER
+        scope: all
+      - key: EMAIL_PASSWORD
+        scope: all
+      - key: BACKEND_URL
+        scope: all
+      - key: FRONTEND_URL
+        value: https://bintievents.vercel.app
