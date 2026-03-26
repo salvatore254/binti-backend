@@ -24,17 +24,7 @@ router.post("/calculate", (req, res) => {
       eventDate, setupTime 
     } = req.body;
 
-    console.log("/calculate endpoint called:", {
-      bookingFlow,
-      packageName,
-      packageBasePrice,
-      tentConfigsCount: tentConfigs ? tentConfigs.length : 0,
-      lighting,
-      transport,
-      location,
-      eventDate,
-      setupTime
-    });
+    console.log("/calculate endpoint called with location:", location);
 
     let total = 0;
     const breakdown = {};
@@ -53,7 +43,6 @@ router.post("/calculate", (req, res) => {
         name: packageName || 'Selected Package', 
         basePrice: packageBasePrice 
       };
-      console.log("Package added - Base price:", packageBasePrice);
     }
 
     // Handle Tent Configurations (if provided - can be combined with package)
@@ -100,7 +89,6 @@ router.post("/calculate", (req, res) => {
         cost: tentTotal,
         count: tentConfigs.length
       };
-      console.log("Tents added - Total tent cost:", tentTotal, "Configs:", tentDetails.length);
     } else if (hasPackage) {
       // Package only, no tents
       breakdown.tent = { type: 'package-included', cost: 0 };
@@ -157,8 +145,17 @@ router.post("/calculate", (req, res) => {
 
     res.json({ success: true, total, breakdown });
   } catch (err) {
-    console.error("Error calculating booking:", err);
-    res.status(500).json({ success: false, message: "Server error calculating booking." });
+    console.error("❌ CALCULATE ERROR:", {
+      message: err.message,
+      stack: err.stack,
+      location: req.body.location,
+      transport: req.body.transport
+    });
+    res.status(500).json({ 
+      success: false, 
+      message: `Server error calculating booking: ${err.message}`,
+      error: err.message 
+    });
   }
 });
 
