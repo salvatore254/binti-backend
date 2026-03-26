@@ -2,7 +2,7 @@
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
-const bodyParser = require("body-parser");
+// Use Express native body parsing (instead of body-parser package)
 const cors = require("cors");
 
 const bookingRoutes = require("./routes/bookingRoutes");
@@ -46,10 +46,19 @@ const allowedOrigins = [
 ].filter(Boolean); // Remove undefined values
 
 const corsOptions = {
-  origin: "https://bintievents.vercel.app",  // Explicit production origin
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow curl/postman
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log("[CORS BLOCKED]:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 200
+  credentials: true,
 };
 
 // Core middleware (must not throw errors)
@@ -62,14 +71,6 @@ app.options('*', cors(corsOptions));
 app.use(bodyParser.json({ limit: "1mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "1mb" }));
 
-// Fallback handler for OPTIONS requests
-app.use((req, res, next) => {
-  if (req.method === "OPTIONS") {
-    console.log("[OPTIONS] Fallback handler - returning 200");
-    return res.sendStatus(200);
-  }
-  next();
-});
 
 // api routes
 app.use("/api/bookings", bookingRoutes);
