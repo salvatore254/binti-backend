@@ -33,32 +33,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS configuration for separate frontend/backend hosting
-const allowedOrigins = [
-  "http://localhost:3000",      // Local development frontend (port 3000)
-  "http://localhost:5000",      // Local development (same host as backend)
-  "http://localhost:5500",      // Live Server port
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:5000",
-  "http://127.0.0.1:5500",      // Live Server port (127.0.0.1 alias)
-  "https://bintievents.vercel.app",     // Production frontend (Vercel)
-  process.env.FRONTEND_URL,     // Additional URL from environment variable
-].filter(Boolean); // Remove undefined values
-
+// CORS configuration - simplified for production compatibility
+// Allows all origins (can be tightened later after testing)
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow curl/postman
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log("[CORS BLOCKED]:", origin);
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  origin: true,  // Allow all origins dynamically
   credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 };
 
 // Core middleware (must not throw errors)
