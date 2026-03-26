@@ -12,7 +12,6 @@ const contactRoutes = require("./routes/contactRoutes");
 // Initialize database and email connections
 const { initializeConnection: initializeDatabase } = require("./database/connection");
 const logger = require("./utils/logger");
-const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 
 // Global error handlers for unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
@@ -56,6 +55,10 @@ const corsOptions = {
 
 // Core middleware (must not throw errors)
 app.use(cors(corsOptions));
+
+// Explicit OPTIONS handler for preflight requests
+app.options('*', cors(corsOptions));
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -108,48 +111,66 @@ app.use((err, req, res, next) => {
 // Initialize database and start server
 const initializeServer = async () => {
   try {
+    console.log('[SERVER] Starting initialization...');
+    
     // Initialize MongoDB connection
-    await initializeDatabase();
-    logger.info('MongoDB connected');
+    try {
+      await initializeDatabase();
+      logger.info('MongoDB connected');
+      console.log('[DB] MongoDB connection successful');
+    } catch (dbErr) {
+      console.error('[DB] MongoDB connection failed:', dbErr.message);
+      console.log('[DB] WARNING: Continuing without database - API will still work');
+      logger.error('MongoDB connection failed: ' + dbErr.message);
+    }
     
     // Verify SMTP is configured
     const emailUser = process.env.EMAIL_USER;
     const emailPass = process.env.EMAIL_PASS;
     if (emailUser && emailPass) {
-      console.log('[EMAIL]  SMTP configured - Emails enabled');
+      console.log('[EMAIL] SMTP configured - Emails enabled');
     } else {
-      console.log('[EMAIL]  SMTP not configured - Emails will not be sent');
+      console.log('[EMAIL] SMTP not configured - Emails will not be sent');
       console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASS in .env to enable');
     }
     
-    // Start server
+    // Start server immediately (don't wait on DB)
     const server = app.listen(PORT, () => {
-      console.log(` Binti backend listening at http://localhost:${PORT}`);
-      console.log(` Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(` Database: MongoDB @ ${process.env.DB_HOST}:${process.env.DB_PORT}`);
+      console.log(`[SERVER] Binti backend listening on port ${PORT}`);
+      console.log(`[SERVER] Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log('[SERVER] CORS enabled for: https://bintievents.vercel.app');
     });
 
     // Graceful shutdown
     process.on('SIGTERM', async () => {
-      console.log(' SIGTERM received, shutting down gracefully...');
+      console.log('[SHUTDOWN] SIGTERM received, shutting down gracefully...');
       server.close(async () => {
-        const { closeConnection } = require("./database/connection");
-        await closeConnection();
+        try {
+          const { closeConnection } = require("./database/connection");
+          await closeConnection();
+        } catch (e) {
+          console.error('[SHUTDOWN] Error closing database:', e.message);
+        }
         process.exit(0);
       });
     });
 
     process.on('SIGINT', async () => {
-      console.log(' SIGINT received, shutting down gracefully...');
+      console.log('[SHUTDOWN] SIGINT received, shutting down gracefully...');
       server.close(async () => {
-        const { closeConnection } = require("./database/connection");
-        await closeConnection();
+        try {
+          const { closeConnection } = require("./database/connection");
+          await closeConnection();
+        } catch (e) {
+          console.error('[SHUTDOWN] Error closing database:', e.message);
+        }
         process.exit(0);
       });
     });
 
   } catch (err) {
-    logger.error(' Failed to initialize server:', err);
+    console.error('[SERVER] Fatal error during initialization:', err.message);
+    logger.error('Failed to initialize server: ' + err.message);
     process.exit(1);
   }
 };
