@@ -53,6 +53,8 @@ class MpesaService {
       }
 
       console.log('[MPESA] Requesting new access token from Daraja');
+      console.log(`[MPESA] OAuth URL: ${this.oauthUrl}`);
+      console.log(`[MPESA] Consumer Key: ${this.consumerKey ? this.consumerKey.substring(0, 10) + '...' : 'NOT SET'}`);
       
       const auth = Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
       
@@ -70,16 +72,26 @@ class MpesaService {
         this.accessToken = response.data.access_token;
         // Token expires in 3600 seconds; cache for 59 minutes (3540 seconds)
         this.tokenExpiry = Date.now() + (3540 * 1000);
-        console.log('[MPESA]  Access token obtained successfully');
+        console.log('[MPESA] ✅ Access token obtained successfully');
         return this.accessToken;
       } else {
         throw new Error('No access token in response');
       }
     } catch (error) {
-      console.error('[MPESA]  Failed to get access token:', error.message);
-      if (error.response?.data) {
-        console.error('[MPESA] Error details:', error.response.data);
+      console.error('[MPESA] ❌ Failed to get access token:', error.message);
+      console.error('[MPESA] OAuth URL being used:', this.oauthUrl);
+      
+      if (error.response?.status) {
+        console.error(`[MPESA] HTTP Status: ${error.response.status}`);
+        console.error(`[MPESA] Response data:`, JSON.stringify(error.response.data, null, 2));
       }
+      
+      // Check if sandbox vs production mismatch
+      if (error.response?.status === 400) {
+        console.error('[MPESA] ⚠️ OAuth returned 400 - likely wrong environment (sandbox creds on prod or vice versa)');
+        console.error('[MPESA] Ensure MPESA_USE_SANDBOX=true is set in environment for sandbox credentials');
+      }
+      
       throw new Error(`OAuth token request failed: ${error.message}`);
     }
   }
