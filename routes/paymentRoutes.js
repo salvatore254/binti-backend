@@ -403,9 +403,6 @@ router.post("/mpesa-callback", async (req, res) => {
       console.log("[MPESA CALLBACK] ResultDesc:", callbackData.resultDesc);
       console.log("[MPESA CALLBACK] ℹ️  Explanation:", callbackData.resultCodeDescription);
       
-      // Retrieve cached booking data for failure notifications
-      const cachedBooking = bookingCache[callbackData.accountRef];
-      
       // Update booking status to reflect payment failure
       try {
         const booking = await Booking.findOneAndUpdate(
@@ -422,36 +419,6 @@ router.post("/mpesa-callback", async (req, res) => {
         
         if (booking) {
           console.log("[MPESA CALLBACK] ✅ Booking status updated to 'payment_failed'");
-          
-          // Send failure notification email
-          if (cachedBooking) {
-            try {
-              console.log("[MPESA CALLBACK] Sending payment failure notification to", cachedBooking.email);
-              const emailService = getEmailService();
-              
-              // Create a payment failure notification
-              const failureMessage = `
-                <p>Dear ${cachedBooking.fullname},</p>
-                <p>Your M-Pesa payment attempt for booking reference <strong>${callbackData.accountRef}</strong> was not successful.</p>
-                <p><strong>Reason:</strong> ${callbackData.resultCodeDescription}</p>
-                <p>Please try again on your phone or contact support if you need help.</p>
-              `;
-              
-              const emailResult = await emailService.sendEmailWithHTML({
-                to: cachedBooking.email,
-                subject: '❌ Payment Failed - Binti Events Booking',
-                html: failureMessage
-              });
-              
-              if (emailResult.success) {
-                console.log("[MPESA CALLBACK] ✉️ Failure notification sent to customer");
-              } else {
-                console.warn("[MPESA CALLBACK] ⚠️ Failed to send failure notification:", emailResult.error);
-              }
-            } catch (emailError) {
-              console.error("[MPESA CALLBACK] ❌ Error sending failure notification:", emailError.message);
-            }
-          }
         } else {
           console.warn("[MPESA CALLBACK] ⚠️ Booking not found for:", callbackData.accountRef);
         }
