@@ -201,6 +201,51 @@ Binti Events Team
   }
 
   /**
+   * Generic email sender with HTML content and attachments
+   * Used for sending invoices and other documents
+   */
+  async sendEmailWithAttachment(options) {
+    try {
+      const mailOptions = {
+        from: `"Binti Events" <${process.env.EMAIL_USER}>`,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        attachments: options.attachments || [],
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log('[EMAIL] Email with attachment sent to:', options.to, '(Message ID:', info.messageId, ')');
+      return { success: true, messageId: info.messageId };
+    } catch (err) {
+      console.error('[EMAIL] Error sending email with attachment:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Generic HTML email sender
+   * Used for sending flexible HTML emails
+   */
+  async sendEmailWithHTML(options) {
+    try {
+      const mailOptions = {
+        from: `"Binti Events" <${process.env.EMAIL_USER}>`,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log('[EMAIL] HTML email sent to:', options.to, '(Message ID:', info.messageId, ')');
+      return { success: true, messageId: info.messageId };
+    } catch (err) {
+      console.error('[EMAIL] Error sending HTML email:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
    * HTML template for booking confirmation email - Professional Design
    */
   getBookingConfirmationTemplate(booking, depositAmount, remainingAmount) {

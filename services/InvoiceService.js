@@ -2,10 +2,13 @@
  * Invoice Service
  * Generates and sends invoices after payment confirmation
  * Based on the Binti Events invoice template/quote format
+ * Invoices are sent as PDF attachments
  */
 
 const EmailService = require('./EmailService');
 const logger = require('../utils/logger');
+const puppeteer = require('puppeteer');
+const fs = require('fs').promises;
 
 class InvoiceService {
   constructor() {
@@ -318,7 +321,7 @@ class InvoiceService {
           <!-- Header -->
           <div class="header">
             <div class="logo-section">
-              <h2>🎉 Binti Events</h2>
+              <h2> Binti Events</h2>
               <div class="company-info">
                 <p>${this.companyInfo.address}</p>
                 <p class="section-title">Customer Care</p>
@@ -523,11 +526,60 @@ class InvoiceService {
   }
 
   /**
-   * Send invoice to customer via email
+   * Convert HTML invoice to PDF
+   * @param {String} html - HTML invoice content
+   * @param {String} bookingId - Booking ID for filename
+   * @returns {Promise<Buffer>} - PDF buffer
+   */
+  async generateInvoicePDF(html, bookingId) {
+    let browser = null;
+    try {
+      console.log(`[INVOICE] Converting invoice to PDF...`);
+      
+      // Launch browser for PDF generation
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+
+      const page = await browser.newPage();
+      
+      // Set content and wait for all resources to load
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+
+      // Generate PDF with professional formatting
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        margin: {
+          top: '20px',
+          right: '20px',
+          bottom: '20px',
+          left: '20px'
+        },
+        printBackground: true,
+        scale: 1,
+      });
+
+      console.log(`[INVOICE] PDF generated successfully (${pdfBuffer.length} bytes)`);
+      return pdfBuffer;
+    } catch (error) {
+      console.error('[INVOICE] PDF generation failed:', error.message);
+      throw error;
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+    }
+  }
+
+  /**
+   * Send invoice to customer via email as PDF attachment
    * @param {Object} booking - The booking document with payment confirmation
    * @returns {Promise<Boolean>} - Success status
    */
   async sendInvoice(booking) {
+    let pdfBuffer = null;
+    
     try {
       if (!booking || booking.status !== 'paid') {
         throw new Error('Booking must have paid status to send invoice');
@@ -542,12 +594,15 @@ class InvoiceService {
       // Generate invoice HTML
       const invoiceHTML = this.generateInvoiceHTML(booking);
 
+      // Convert HTML to PDF
+      pdfBuffer = await this.generateInvoicePDF(invoiceHTML, booking._id);
+
       // Prepare email
       const emailSubject = `Invoice - Binti Events (Booking #${booking._id.substring(0, 8).toUpperCase()})`;
       
       const emailBody = `
         <h2>Dear ${booking.fullname},</h2>
-        <p>Thank you for your payment! Your invoice for the Binti Events booking is attached below.</p>
+        <p>Thank you for your payment! Your invoice for the Binti Events booking is attached as a PDF.</p>
         <p><strong>Event Details:</strong></p>
         <ul>
           <li>Venue: ${booking.venue}</li>
@@ -565,14 +620,21 @@ class InvoiceService {
         <p>Best regards,<br><strong>Binti Events Team</strong></p>
       `;
 
-      // Send email with invoice
-      await this.emailService.sendEmailWithHTML({
+      // Send email with PDF attachment
+      const pdfFilename = `Invoice_${booking._id.substring(0, 8).toUpperCase()}.pdf`;
+      
+      await this.emailService.sendEmailWithAttachment({
         to: booking.email,
         subject: emailSubject,
-        html: emailBody + '<hr>' + invoiceHTML,
+        html: emailBody,
+        attachments: [{
+          filename: pdfFilename,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }]
       });
 
-      console.log(`[INVOICE] ✅ Invoice sent successfully to ${booking.email}`);
+      console.log(`[INVOICE] ✅ PDF Invoice sent successfully to ${booking.email}`);
       return true;
     } catch (error) {
       console.error('[INVOICE] Failed to send invoice:', error.message);
