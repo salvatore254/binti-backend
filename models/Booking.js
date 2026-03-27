@@ -139,7 +139,7 @@ const bookingSchema = new mongoose.Schema({
   // Payment Information
   status: {
     type: String,
-    enum: ['pending', 'paid', 'completed', 'cancelled'],
+    enum: ['pending', 'paid', 'completed', 'cancelled', 'payment_failed'],
     default: 'pending',
   },
   paymentMethod: {
@@ -148,6 +148,12 @@ const bookingSchema = new mongoose.Schema({
     default: null,
   },
   transactionId: String,
+  
+  // Payment Failure Tracking
+  paymentFailureReason: String,
+  paymentFailureCode: Number,
+  lastPaymentAttempt: Date,
+  lastPaymentError: String,
 
   // Invoice Tracking
   invoiceSent: {

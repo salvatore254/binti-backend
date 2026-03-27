@@ -314,9 +314,36 @@ class MpesaService {
       metadata[item.Name] = item.Value;
     }
     
+    const resultCode = callbackData.Body?.stkCallback?.ResultCode || null;
+    
+    // Map common result codes to user-friendly descriptions
+    const resultCodeDescriptions = {
+      0: 'Payment successful - User completed transaction',
+      1: 'User cancelled the transaction',
+      1001: 'Unable to queue the transaction',
+      1002: 'Invalid Merchant - Account not set up to receive STK',
+      1003: 'Invalid account - Missing phone number or account ref',
+      1004: 'Unspecified error - Contact M-Pesa support',
+      1005: 'Unable to route transaction - Invalid shortcode',
+      1006: 'Unable to initialize transaction - Try again',
+      1010: 'Could not confirm transaction validity within 3 hours',
+      1011: 'Deferred transaction by user - Not initiated on phone',
+      1012: 'Authentication failure',
+      1014: 'Original transaction ID cannot be found',
+      1015: 'The transaction has already been reversed',
+      1016: 'Poor network quality on the phone',
+      1018: 'The transaction amount exceeds your daily limit',
+      1019: 'The transaction amount is less than the minimum allowed for this shortcode',
+      1037: 'DS timeout user cannot be reached or user cancelled transaction',
+      1040: 'Service not allowed for this shortcode',
+      1041: 'Invalid Amount - Amount exceeds maximum allowed',
+      1999: 'User did not enter the PIN - Timeout on phone'
+    };
+    
     return {
-      resultCode: callbackData.Body?.stkCallback?.ResultCode || null,
+      resultCode: resultCode,
       resultDesc: callbackData.Body?.stkCallback?.ResultDesc || null,
+      resultCodeDescription: resultCodeDescriptions[resultCode] || 'Unknown error code',
       merchantRequestId: callbackData.Body?.stkCallback?.MerchantRequestID || null,
       checkoutRequestId: callbackData.Body?.stkCallback?.CheckoutRequestID || null,
       accountRef: callbackData.Body?.stkCallback?.AccountReference || null,
