@@ -504,20 +504,30 @@ router.post("/confirm", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    // Save booking to MongoDB
-    await booking.save();
-    console.log(`✅ Booking saved to database with ID: ${bookingId}`);
+    // Return booking confirmation BEFORE saving to database (non-blocking)
+    // This ensures quick frontend response (< 1 second)
+    res.json({
+      success: true,
+      message: "Booking processing started. Confirmation will be sent to your email.",
+      bookingId: booking._id || bookingId,
+      booking: booking.toJSON(),
+      depositAmount: booking.depositAmount,
+      remainingAmount: booking.remainingAmount,
+      status: "processing"
+    });
 
-    // Send confirmation emails (non-blocking - don't wait for email before responding)
-    // Email failures should not fail the entire booking
-    console.log("Booking confirmed:");
-    console.log(`   Booking ID: ${bookingId}`);
-    console.log(`   Customer: ${fullname}`);
-    console.log(`   Total: KES ${total}`);
-    console.log(`   Deposit (80%): KES ${Math.round(total * 0.8)}`);
-    console.log(`   Sending confirmation emails...`);
-    
-    // Send emails asynchronously (non-blocking)
+    // Save booking to MongoDB asynchronously (non-blocking - don't wait before responding)
+    // Database save happens in background after response is sent
+    (async () => {
+      try {
+        await booking.save();
+        console.log(`✅ Booking saved to database with ID: ${bookingId}`);
+      } catch (dbErr) {
+        console.error('❌ Failed to save booking to database:', dbErr.message);
+      }
+    })();
+
+    // Send confirmation emails (non-blocking)
     (async () => {
       try {
         const EmailService = require("../services/EmailService");
@@ -531,20 +541,6 @@ router.post("/confirm", async (req, res) => {
         console.warn('Booking was created successfully but confirmation emails could not be sent.');
       }
     })();
-
-    // Return booking confirmation immediately (don't wait for emails)
-    res.json({
-      success: true,
-      message: "Booking confirmed! Confirmation emails have been sent.",
-      bookingId: booking._id, // Explicitly provide booking ID at top level
-      booking: booking.toJSON(),
-      depositAmount: booking.depositAmount,
-      remainingAmount: booking.remainingAmount,
-      emailsSent: {
-        customer: "processing",
-        admin: "processing"
-      }
-    });
 
   } catch (err) {
     console.error("Error confirming booking:", err);
