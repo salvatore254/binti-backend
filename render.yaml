@@ -14,6 +14,8 @@ services:
         value: https://sandbox.pesapal.com
       - key: USE_PESAPAL_MOCK
         value: "false"
+      - key: PESAPAL_USE_SANDBOX
+        value: "true"
       - key: FRONTEND_URL
         value: https://bintievents.vercel.app
       - key: DATABASE_URL

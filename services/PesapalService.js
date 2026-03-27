@@ -12,27 +12,27 @@ class PesapalService {
     this.consumerKey = process.env.PESAPAL_CONSUMER_KEY;
     this.consumerSecret = process.env.PESAPAL_CONSUMER_SECRET;
     
-    // Determine API URL based on NODE_ENV
-    // Production: https://api.pesapal.com
-    // Development/Sandbox: https://sandbox.pesapal.com
-    const isProduction = process.env.NODE_ENV === 'production';
+    // Determine API URL based on PESAPAL_USE_SANDBOX flag or NODE_ENV
+    // Use PESAPAL_API_URL from env if explicitly set
+    // Otherwise: check PESAPAL_USE_SANDBOX flag
+    // Fallback: check NODE_ENV (production = live API, anything else = sandbox)
+    const useSandbox = process.env.PESAPAL_USE_SANDBOX === 'true' || 
+                       (process.env.PESAPAL_API_URL && process.env.PESAPAL_API_URL.includes('sandbox'));
+    const isProduction = process.env.NODE_ENV === 'production' && !useSandbox;
+    
     this.apiUrl = process.env.PESAPAL_API_URL || 
                   (isProduction ? 'https://api.pesapal.com' : 'https://sandbox.pesapal.com');
     
     this.redirectUrl = process.env.PESAPAL_REDIRECT_URL || 'http://localhost:5000/payment-status';
     
     this.authUrl = `${this.apiUrl}/api/Auth/RequestToken`;
-    // Note: Correct endpoint for payment order creation in Pesapal v3 API
-    // Old endpoint: /api/Transactions/InitiatePaymentRelease (v2)
-    // New endpoint should be: /api/Transactions/InitiatePayment (v3)
-    // Using InitiatePaymentRelease for compatibility
     this.orderUrl = `${this.apiUrl}/api/Transactions/InitiatePayment`;
     this.statusUrl = `${this.apiUrl}/api/Transactions/GetTransactionStatus`;
     
     this.accessToken = null;
     this.tokenExpiry = null;
     
-    console.log(`[PESAPAL] Initialized in ${isProduction ? 'PRODUCTION' : 'SANDBOX'} mode`);
+    console.log(`[PESAPAL] Initialized in ${useSandbox || !isProduction ? 'SANDBOX' : 'PRODUCTION'} mode`);
     console.log(`[PESAPAL] API URL: ${this.apiUrl}`);
   }
 
