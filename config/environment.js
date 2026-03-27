@@ -21,7 +21,7 @@ const config = {
   PESAPAL_CONSUMER_KEY: process.env.PESAPAL_CONSUMER_KEY,
   PESAPAL_CONSUMER_SECRET: process.env.PESAPAL_CONSUMER_SECRET,
   PESAPAL_MERCHANT_REFERENCE: process.env.PESAPAL_MERCHANT_REFERENCE || 'BINTI',
-  PESAPAL_REDIRECT_URL: process.env.PESAPAL_REDIRECT_URL || 'http://localhost:5000/payment-status',
+  PESAPAL_REDIRECT_URL: process.env.PESAPAL_REDIRECT_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/payment-status`,
   
   MPESA_CONSUMER_KEY: process.env.MPESA_CONSUMER_KEY,
   MPESA_CONSUMER_SECRET: process.env.MPESA_CONSUMER_SECRET,
