@@ -38,7 +38,11 @@ const whitelist = [
   'https://bintievents.vercel.app',
   'http://localhost:3000',
   'http://localhost:3001',
-  'http://127.0.0.1:3000'
+  'http://localhost:5000',
+  'http://localhost:8000',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5000',
+  'http://127.0.0.1:8000'
 ];
 
 const corsOptions = {
@@ -148,12 +152,12 @@ const initializeServer = async () => {
     
     // Verify SMTP is configured
     const emailUser = process.env.EMAIL_USER;
-    const emailPass = process.env.EMAIL_PASS;
+    const emailPass = process.env.EMAIL_PASSWORD;
     if (emailUser && emailPass) {
       console.log('[EMAIL] SMTP configured - Emails enabled');
     } else {
       console.log('[EMAIL] SMTP not configured - Emails will not be sent');
-      console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASS in .env to enable');
+      console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASSWORD in .env to enable');
     }
     
     // Start server immediately (don't wait on DB)
