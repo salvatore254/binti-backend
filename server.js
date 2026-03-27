@@ -12,6 +12,8 @@ const contactRoutes = require("./routes/contactRoutes");
 // Initialize database and email connections
 const { initializeConnection: initializeDatabase } = require("./database/connection");
 const logger = require("./utils/logger");
+const InvoiceScheduler = require("./services/InvoiceScheduler");
+const Booking = require("./models/Booking");
 
 // Global error handlers for unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
@@ -167,6 +169,17 @@ const initializeServer = async () => {
     } else {
       console.log('[EMAIL] SMTP not configured - Emails will not be sent');
       console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASSWORD in .env to enable');
+    }
+
+    // Initialize Invoice Scheduler (runs every 5 minutes to check for pending invoices)
+    try {
+      const invoiceScheduler = new InvoiceScheduler();
+      invoiceScheduler.start(Booking, 300); // Check every 5 minutes (300 seconds)
+      console.log('[INVOICE SCHEDULER] ✅ Invoice scheduler started');
+    } catch (schedulerErr) {
+      console.warn('[INVOICE SCHEDULER] ⚠️ Failed to start scheduler:', schedulerErr.message);
+      logger.warn('Invoice scheduler initialization failed: ' + schedulerErr.message);
+      // Continue anyway - invoices will still be sent on payment callback
     }
     
     // Start server immediately (don't wait on DB)

@@ -88,10 +88,11 @@ class PesapalService {
       
       // Provide more helpful error messages
       if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
-        console.error('[PESAPAL] ⚠️  DNS/Network error - Cannot resolve hostname. Check:');
-        console.error('  - Internet connectivity');
-        console.error('  - PESAPAL_API_URL environment variable (if set)');
-        console.error('  - NODE_ENV setting (should be development for sandbox)');
+        console.error('[PESAPAL]  DNS/Network error - Cannot resolve hostname. Check:');
+        console.error('  - Internet connectivity from Render');
+        console.error('  - PESAPAL_USE_SANDBOX=true is set in Render Environment (Dashboard)');
+        console.error('  - PESAPAL_API_URL environment variable');
+        console.error('  - Pesapal sandbox API status (https://sandbox.pesapal.com might be down)');
       }
       
       throw new Error(`Pesapal authentication failed: ${error.message}`);

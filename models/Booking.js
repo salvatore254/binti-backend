@@ -149,6 +149,13 @@ const bookingSchema = new mongoose.Schema({
   },
   transactionId: String,
 
+  // Invoice Tracking
+  invoiceSent: {
+    type: Boolean,
+    default: false,
+  },
+  invoiceSentAt: Date,
+
   // Terms and Conditions
   termsAccepted: {
     type: Boolean,

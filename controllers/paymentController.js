@@ -7,6 +7,7 @@ const response = require('../utils/response');
 const logger = require('../utils/logger');
 const { validatePaymentData } = require('../validators/bookingValidator');
 const { query } = require('../database/connection');
+const InvoiceService = require('../services/InvoiceService');
 
 /**
  * Process M-Pesa payment
@@ -119,6 +120,12 @@ const mpesaCallback = async (req, res, next) => {
 
       if (booking) {
         logger.info(`✅ Booking ${booking._id} updated to paid status via M-Pesa`);
+        
+        // Send invoice asynchronously
+        const invoiceService = new InvoiceService();
+        invoiceService.sendInvoice(booking).catch(err => {
+          logger.error(`Failed to send invoice for booking ${booking._id}: ${err.message}`);
+        });
       } else {
         logger.warn(`⚠️ No booking found for M-Pesa phone: ${phone}`);
       }
@@ -160,6 +167,12 @@ const pesapalCallback = async (req, res, next) => {
 
       if (booking) {
         logger.info(`✅ Booking ${booking._id} updated to paid status via Pesapal`);
+        
+        // Send invoice asynchronously
+        const invoiceService = new InvoiceService();
+        invoiceService.sendInvoice(booking).catch(err => {
+          logger.error(`Failed to send invoice for booking ${booking._id}: ${err.message}`);
+        });
       } else {
         logger.warn(`⚠️ No booking found with ID: ${order_tracking_id}`);
       }
