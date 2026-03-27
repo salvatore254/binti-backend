@@ -48,10 +48,24 @@ const whitelist = [
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, curl requests)
-    if (!origin || whitelist.includes(origin)) {
+    if (!origin) {
+      console.log('[CORS] No origin header - allowing request');
       callback(null, true);
+    } else if (whitelist.includes(origin)) {
+      console.log(`[CORS] Origin allowed: ${origin}`);
+      callback(null, true);
+    } else if (process.env.NODE_ENV !== 'production') {
+      // In development, allow any localhost origin
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        console.log(`[CORS] Development origin allowed: ${origin}`);
+        callback(null, true);
+      } else {
+        console.log(`[CORS] Origin rejected: ${origin}`);
+        callback(null, false);
+      }
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log(`[CORS] Origin rejected: ${origin}`);
+      callback(null, false);
     }
   },
   credentials: true,
