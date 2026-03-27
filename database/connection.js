@@ -20,7 +20,7 @@ const initializeConnection = async () => {
       return mongoose.connection;
     }
 
-    const mongoUri = process.env.DATABASE_URL || 
+    const mongoUri = process.env.DATABASE_URL || process.env.MONGODB_URI || 
       `mongodb://${config.DB_HOST || 'localhost'}:${config.DB_PORT || 27017}/${config.DB_NAME || 'binti_events'}`;
 
     logger.info(`Connecting to MongoDB: ${mongoUri.replace(/:[^@]*@/, ':***@')}`);
@@ -31,11 +31,11 @@ const initializeConnection = async () => {
     });
 
     isDbConnected = true;
-    logger.info('✅ MongoDB connected successfully');
+    logger.info('MongoDB connected successfully');
     
     return mongoose.connection;
   } catch (error) {
-    logger.error(`❌ Database connection error: ${error.message}`);
+    logger.error(`Database connection error: ${error.message}`);
     throw error;
   }
 };
@@ -65,10 +65,10 @@ const closeConnection = async () => {
     if (isDbConnected) {
       await mongoose.disconnect();
       isDbConnected = false;
-      logger.info('✅ MongoDB disconnected');
+      logger.info('MongoDB disconnected');
     }
   } catch (error) {
-    logger.error(`❌ Error closing database connection: ${error.message}`);
+    logger.error(`Error closing database connection: ${error.message}`);
     throw error;
   }
 };

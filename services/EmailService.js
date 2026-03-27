@@ -13,7 +13,7 @@ class EmailService {
       service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        pass: process.env.EMAIL_PASS, // Use EMAIL_PASS from .env
       },
       tls: {
         // For development/staging environments, disable strict SSL verification
