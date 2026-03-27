@@ -21,19 +21,18 @@ const config = {
   PESAPAL_CONSUMER_KEY: process.env.PESAPAL_CONSUMER_KEY,
   PESAPAL_CONSUMER_SECRET: process.env.PESAPAL_CONSUMER_SECRET,
   PESAPAL_MERCHANT_REFERENCE: process.env.PESAPAL_MERCHANT_REFERENCE || 'BINTI',
-  PESAPAL_CALLBACK_URL: process.env.PESAPAL_CALLBACK_URL || 'http://localhost:5000/api/payments/pesapal-callback',
+  PESAPAL_REDIRECT_URL: process.env.PESAPAL_REDIRECT_URL || 'http://localhost:5000/payment-status',
   
   MPESA_CONSUMER_KEY: process.env.MPESA_CONSUMER_KEY,
   MPESA_CONSUMER_SECRET: process.env.MPESA_CONSUMER_SECRET,
   MPESA_SHORTCODE: process.env.MPESA_SHORTCODE || '174379',
   MPESA_PASSKEY: process.env.MPESA_PASSKEY,
+  MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL,
   
   // Email Configuration
-  SMTP_HOST: process.env.SMTP_HOST,
-  SMTP_PORT: process.env.SMTP_PORT || 587,
-  SMTP_USER: process.env.SMTP_USER,
-  SMTP_PASSWORD: process.env.SMTP_PASSWORD,
-  SMTP_FROM: process.env.SMTP_FROM || 'noreply@bintievents.com',
+  EMAIL_USER: process.env.EMAIL_USER,
+  EMAIL_PASS: process.env.EMAIL_PASS,
+  ADMIN_EMAIL: process.env.ADMIN_EMAIL,
   
   // Application URLs
   APP_URL: process.env.APP_URL || 'http://localhost:5000',
