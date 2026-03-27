@@ -16,8 +16,8 @@ services:
         value: "false"
       - key: FRONTEND_URL
         value: https://bintievents.vercel.app
-      - key: MONGODB_URI
-        value: ${MONGODB_URI}
+      - key: DATABASE_URL
+        value: ${DATABASE_URL}
       - key: PESAPAL_CONSUMER_KEY
         value: ${PESAPAL_CONSUMER_KEY}
       - key: PESAPAL_CONSUMER_SECRET
@@ -36,7 +36,7 @@ services:
         value: ${MPESA_PASSKEY}
       - key: EMAIL_USER
         value: ${EMAIL_USER}
-      - key: EMAIL_PASSWORD
-        value: ${EMAIL_PASSWORD}
+      - key: EMAIL_PASS
+        value: ${EMAIL_PASS}
       - key: BACKEND_URL
         value: ${BACKEND_URL}
