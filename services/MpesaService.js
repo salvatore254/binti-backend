@@ -25,18 +25,18 @@ class MpesaService {
       console.warn(`[MPESA] M-Pesa STK push will fail until these are configured.`);
     }
     
-    // Use production URL by default; sandbox if NODE_ENV is not production
-    const isProduction = process.env.NODE_ENV === 'production';
-    this.baseUrl = isProduction 
-      ? 'https://api.safaricom.co.ke'
-      : 'https://sandbox.safaricom.co.ke';
+    // Use production URL by default; sandbox if NODE_ENV is not production or MPESA_USE_SANDBOX is true
+    const useSandbox = process.env.MPESA_USE_SANDBOX === 'true' || process.env.NODE_ENV !== 'production';
+    this.baseUrl = useSandbox 
+      ? 'https://sandbox.safaricom.co.ke'
+      : 'https://api.safaricom.co.ke';
     
     this.oauthUrl = `${this.baseUrl}/oauth/v1/generate`;
     this.stkUrl = `${this.baseUrl}/mpesa/stkpush/v1/processrequest`;
     this.accessToken = null;
     this.tokenExpiry = null;
     
-    console.log(`[MPESA] Initialized in ${isProduction ? 'PRODUCTION' : 'SANDBOX'} mode`);
+    console.log(`[MPESA] Initialized in ${useSandbox ? 'SANDBOX' : 'PRODUCTION'} mode`);
     console.log(`[MPESA] Base URL: ${this.baseUrl}`);
   }
 

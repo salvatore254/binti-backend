@@ -30,6 +30,8 @@ services:
         value: ${MPESA_CONSUMER_SECRET}
       - key: MPESA_SHORTCODE
         value: ${MPESA_SHORTCODE}
+      - key: MPESA_USE_SANDBOX
+        value: "true"
       - key: MPESA_CALLBACK_URL
         value: ${MPESA_CALLBACK_URL}
       - key: MPESA_PASSKEY

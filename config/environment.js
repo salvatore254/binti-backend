@@ -28,6 +28,7 @@ const config = {
   MPESA_SHORTCODE: process.env.MPESA_SHORTCODE || '174379',
   MPESA_PASSKEY: process.env.MPESA_PASSKEY,
   MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL,
+  MPESA_USE_SANDBOX: process.env.MPESA_USE_SANDBOX === 'true',
   
   // Email Configuration
   EMAIL_USER: process.env.EMAIL_USER,
