@@ -201,16 +201,27 @@ router.post("/mpesa", async (req, res) => {
 
     return res.json({
       success: true,
-      message: "STK push initiated successfully",
+      status: 'pending',
+      message: "STK push initiated successfully - customer should see prompt on their phone",
       checkoutRequestId: result.checkoutRequestId,
+      responseCode: result.responseCode,
       responseDescription: result.responseDescription,
-      merchantRequestId: result.merchantRequestId
+      merchantRequestId: result.merchantRequestId,
+      instruction: "Confirm the prompt on your phone to complete payment",
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error("[PAYMENT] M-Pesa initiation failed:", error.message);
+    console.error("[PAYMENT] Full error:", error);
     return res.status(500).json({
       success: false,
-      message: error.message || "M-Pesa STK push failed"
+      status: 'failed',
+      message: error.message || "M-Pesa STK push failed",
+      error: error.message,
+      debugging: {
+        timestamp: new Date().toISOString(),
+        hint: "Check M-Pesa credentials and phone number format (should be 254712345678)"
+      }
     });
   }
 });
@@ -399,6 +410,116 @@ router.post("/mpesa-callback", async (req, res) => {
     console.error("[MPESA CALLBACK] Error processing callback:", error.message);
     console.error("[MPESA CALLBACK] Stack:", error.stack);
     res.sendStatus(200); // Still acknowledge to prevent Daraja retries
+  }
+});
+
+/**
+ * GET /api/payments/test/mpesa-auth
+ * Test endpoint to verify M-Pesa Daraja authentication is working
+ * Useful for debugging MPESA_USE_SANDBOX and credential issues
+ */
+router.get("/test/mpesa-auth", async (req, res) => {
+  try {
+    console.log("[TEST] M-Pesa OAuth Test");
+    console.log("[TEST] Environment:", {
+      NODE_ENV: process.env.NODE_ENV,
+      MPESA_USE_SANDBOX: process.env.MPESA_USE_SANDBOX,
+      MPESA_CONSUMER_KEY: process.env.MPESA_CONSUMER_KEY ? "***SET***" : "NOT SET",
+      MPESA_CONSUMER_SECRET: process.env.MPESA_CONSUMER_SECRET ? "***SET***" : "NOT SET",
+      MPESA_SHORTCODE: process.env.MPESA_SHORTCODE || "NOT SET",
+      MPESA_PASSKEY: process.env.MPESA_PASSKEY ? "***SET***" : "NOT SET"
+    });
+
+    // Try to get access token
+    const token = await mpesaService.getAccessToken();
+    
+    return res.json({
+      success: true,
+      message: "✅ M-Pesa OAuth authentication successful!",
+      token: token.substring(0, 20) + "...[TRUNCATED]",
+      mode: process.env.MPESA_USE_SANDBOX === 'true' ? 'SANDBOX' : 'PRODUCTION',
+      timestamp: new Date().toISOString(),
+      instruction: "Your M-Pesa credentials are working. You can now proceed with STK push."
+    });
+  } catch (error) {
+    console.error("[TEST] M-Pesa OAuth Test failed:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "❌ M-Pesa OAuth authentication failed",
+      error: error.message,
+      debugging: {
+        mode: process.env.MPESA_USE_SANDBOX === 'true' ? 'SANDBOX' : 'PRODUCTION',
+        NODE_ENV: process.env.NODE_ENV,
+        suggestions: [
+          "1. Verify MPESA_CONSUMER_KEY and MPESA_CONSUMER_SECRET in .env",
+          "2. Verify MPESA_USE_SANDBOX=true (for sandbox) or =false (for production)",
+          "3. Ensure credentials match the environment (sandbox creds for sandbox, production creds for production)",
+          "4. Check internet connectivity from your server",
+          "5. Verify the credentials have not expired"
+        ]
+      }
+    });
+  }
+});
+
+/**
+ * GET /api/payments/test/mpesa-stk
+ * Test endpoint to verify complete STK push flow
+ * Sends a test STK to a provided phone number
+ * Body: { phone, amount } (e.g. { "phone": "254712345678", "amount": 1 })
+ */
+router.post("/test/mpesa-stk", async (req, res) => {
+  try {
+    const { phone, amount = 1 } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required field: phone (format: 254712345678 or 0712345678)"
+      });
+    }
+
+    console.log("[TEST] M-Pesa STK Test - Phone:", phone, "Amount:", amount);
+
+    // Initiate test STK push
+    const result = await mpesaService.initiateStkPush(
+      phone,
+      amount,
+      `TEST-${Date.now()}`,
+      `Test STK Push - Binti Events`
+    );
+
+    return res.json({
+      success: true,
+      message: "✅ STK push initiated successfully! Check your phone for the prompt.",
+      mode: process.env.MPESA_USE_SANDBOX === 'true' ? 'SANDBOX' : 'PRODUCTION',
+      response: {
+        checkoutRequestId: result.checkoutRequestId,
+        responsecode: result.responseCode,
+        responseDescription: result.responseDescription,
+        customerMessage: result.customerMessage,
+        merchantRequestId: result.merchantRequestId
+      },
+      instruction: "A confirmation prompt should appear on the phone: " + phone,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("[TEST] M-Pesa STK Test failed:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "❌ STK push test failed",
+      error: error.message,
+      debugging: {
+        timestamp: new Date().toISOString(),
+        suggestions: [
+          "1. Verify phone number format (should be 254712345678, not 0712345678 or +254712345678)",
+          "2. Check that MPESA_USE_SANDBOX=true is set for sandbox testing",
+          "3. Verify all M-Pesa credentials in .env",
+          "4. Ensure the phone number has M-Pesa enabled",
+          "5. If sandbox: use a test phone or create one on Daraja portal"
+        ]
+      }
+    });
   }
 });
 

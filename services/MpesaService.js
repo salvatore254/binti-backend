@@ -88,7 +88,7 @@ class MpesaService {
       
       // Check if sandbox vs production mismatch
       if (error.response?.status === 400) {
-        console.error('[MPESA] ⚠️ OAuth returned 400 - likely wrong environment (sandbox creds on prod or vice versa)');
+        console.error('[MPESA] OAuth returned 400 - likely wrong environment (sandbox creds on prod or vice versa)');
         console.error('[MPESA] Ensure MPESA_USE_SANDBOX=true is set in environment for sandbox credentials');
       }
       
@@ -172,23 +172,49 @@ class MpesaService {
         timeout: 15000
       });
 
-      console.log('[MPESA]  STK push initiated successfully');
-      console.log('[MPESA] Response:', response.data);
+      console.log('[MPESA] ✅ STK push initiated successfully');
+      console.log('[MPESA] Response status:', response.status);
+      console.log('[MPESA] Response data:', JSON.stringify(response.data, null, 2));
 
-      // Return checkout request ID and other relevant data
-      return {
-        success: true,
-        checkoutRequestId: response.data.CheckoutRequestID,
-        responseCode: response.data.ResponseCode,
-        responseDescription: response.data.ResponseDescription,
-        customerMessage: response.data.CustomerMessage,
-        merchantRequestId: response.data.MerchantRequestID
-      };
-    } catch (error) {
-      console.error('[MPESA]  STK push failed:', error.message);
-      if (error.response?.data) {
-        console.error('[MPESA]  Error response:', error.response.data);
+      // Check for successful response
+      // Daraja returns various codes - need to check for success and errors
+      const responseData = response.data;
+      
+      // Check if ResponseCode indicates success (0 is success, others are error codes)
+      if (responseData.ResponseCode === '0' || responseData.ResponseCode === 0) {
+        console.log('[MPESA] ✅ STK push REQUEST accepted by Safaricom');
+        return {
+          success: true,
+          checkoutRequestId: responseData.CheckoutRequestID,
+          responseCode: responseData.ResponseCode,
+          responseDescription: responseData.ResponseDescription,
+          customerMessage: responseData.CustomerMessage,
+          merchantRequestId: responseData.MerchantRequestID
+        };
+      } else {
+        // Non-zero response code means error
+        console.error('[MPESA] ⚠️ STK push returned error code:', responseData.ResponseCode);
+        console.error('[MPESA] Error description:', responseData.ResponseDescription);
+        throw new Error(`STK push failed with code ${responseData.ResponseCode}: ${responseData.ResponseDescription}`);
       }
+    } catch (error) {
+      console.error('[MPESA] ❌ STK push failed:', error.message);
+      console.error('[MPESA] Error details:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
+      
+      // Provide helpful debugging info
+      if (error.response?.status === 401) {
+        console.error('[MPESA] 401 Unauthorized - Check your M-Pesa credentials in .env');
+      } else if (error.response?.status === 400) {
+        console.error('[MPESA] 400 Bad Request - Check request format and parameters');
+        console.error('[MPESA] Response:', JSON.stringify(error.response?.data, null, 2));
+      }
+      
       throw error;
     }
   }
