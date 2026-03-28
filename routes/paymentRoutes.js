@@ -343,19 +343,21 @@ router.post("/mpesa-callback", async (req, res) => {
       console.log("[MPESA CALLBACK] Receipt:", callbackData.mpesaReceiptNumber);
       console.log("[MPESA CALLBACK] Amount:", callbackData.amount);
       console.log("[MPESA CALLBACK] Phone:", callbackData.phoneNumber);
-      console.log("[MPESA CALLBACK] AccountRef (BookingID):", callbackData.accountRef);
+      console.log("[MPESA CALLBACK] AccountRef (Truncated to 12 chars):", callbackData.accountRef);
 
-      // Retrieve cached booking data
-      const cachedBooking = bookingCache[callbackData.accountRef];
+      // NOTE: AccountRef from M-Pesa is truncated to 12 chars, so we use phone as primary lookup
+      // Phone number is always reliable for finding the correct booking
       
-      if (cachedBooking) {
-        console.log("[MPESA CALLBACK] Found cached booking data for", cachedBooking.fullname);
+      let updatedBooking = null;
+      let cachedBooking = bookingCache[callbackData.accountRef];
+
+      // Try to update by phone number (most reliable since accountRef is truncated)
+      if (callbackData.phoneNumber) {
+        console.log("[MPESA CALLBACK] Updating booking by phone number...");
         
-        // Update database with payment confirmation
-        // Try to update by bookingId (accountRef) first, which is most reliable
         try {
-          const booking = await Booking.findByIdAndUpdate(
-            callbackData.accountRef,
+          updatedBooking = await Booking.findOneAndUpdate(
+            { mpesaPhone: callbackData.phoneNumber },
             {
               status: 'paid',
               paymentMethod: 'mpesa',
@@ -365,32 +367,42 @@ router.post("/mpesa-callback", async (req, res) => {
             { new: true }
           );
           
-          if (booking) {
-            console.log("[MPESA CALLBACK] ✅ Booking status updated to PAID (ID: " + booking._id + ")");
-          } else {
-            console.warn("[MPESA CALLBACK] ⚠️  Booking not found by ID:", callbackData.accountRef);
-            // Try fallback: update via mpesaPhone
-            const fallbackBooking = await Booking.findOneAndUpdate(
-              { mpesaPhone: callbackData.phoneNumber },
-              {
-                status: 'paid',
-                paymentMethod: 'mpesa',
-                transactionId: callbackData.mpesaReceiptNumber,
-                updatedAt: new Date()
-              },
-              { new: true }
-            );
-            if (fallbackBooking) {
-              console.log("[MPESA CALLBACK] ✅ Booking updated via phone fallback (ID: " + fallbackBooking._id + ")");
-            }
+          if (updatedBooking) {
+            console.log("[MPESA CALLBACK] ✅ Booking status updated to PAID by phone (ID: " + updatedBooking._id + ")");
+            console.log("[MPESA CALLBACK] ✅ Booking for:", updatedBooking.fullname || updatedBooking.email);
           }
         } catch (dbError) {
-          console.error("[MPESA CALLBACK] ❌ Error updating booking status:", dbError.message);
+          console.error("[MPESA CALLBACK] ❌ Error updating by phone:", dbError.message);
         }
-        
-        // Send confirmation email asynchronously (non-blocking)
+      }
+
+      // If phone lookup failed, try fallback with cached booking ID
+      if (!updatedBooking && cachedBooking && cachedBooking._id) {
+        console.log("[MPESA CALLBACK] Phone lookup failed, trying cached booking ID...");
         try {
-          console.log("[MPESA CALLBACK] Sending confirmation email to", cachedBooking.email);
+          updatedBooking = await Booking.findByIdAndUpdate(
+            cachedBooking._id,
+            {
+              status: 'paid',
+              paymentMethod: 'mpesa',
+              transactionId: callbackData.mpesaReceiptNumber,
+              updatedAt: new Date()
+            },
+            { new: true }
+          );
+          
+          if (updatedBooking) {
+            console.log("[MPESA CALLBACK] ✅ Booking updated via cached ID fallback (ID: " + updatedBooking._id + ")");
+          }
+        } catch (dbError) {
+          console.error("[MPESA CALLBACK] ❌ Error updating via cached ID:", dbError.message);
+        }
+      }
+
+      // Send confirmation email if booking was updated
+      if (updatedBooking && cachedBooking) {
+        try {
+          console.log("[MPESA CALLBACK] Sending payment confirmation email to", cachedBooking.email);
           const emailService = getEmailService();
           const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, callbackData.mpesaReceiptNumber);
           
@@ -402,36 +414,16 @@ router.post("/mpesa-callback", async (req, res) => {
         } catch (emailError) {
           console.error("[MPESA CALLBACK] ❌ Error sending confirmation email:", emailError.message);
         }
-        
-        // Remove from cache after processing
+      } else if (!updatedBooking) {
+        console.warn("[MPESA CALLBACK] ⚠️  Could not update booking - not found by phone or ID");
+      } else if (!cachedBooking) {
+        console.warn("[MPESA CALLBACK] ⚠️  No cached booking available for email - booking updated but no email sent");
+      }
+
+      // Clean up cache
+      if (callbackData.accountRef) {
         delete bookingCache[callbackData.accountRef];
-        console.log("[MPESA CALLBACK] Booking data cleared from cache");
-      } else {
-        console.warn("[MPESA CALLBACK] ⚠️  No cached booking found for accountRef:", callbackData.accountRef);
-        console.warn("[MPESA CALLBACK] Available cache keys:", Object.keys(bookingCache));
-        console.warn("[MPESA CALLBACK] Attempting database update anyway by ID...");
-        
-        // Try direct database update even without cache
-        try {
-          const booking = await Booking.findByIdAndUpdate(
-            callbackData.accountRef,
-            {
-              status: 'paid',
-              paymentMethod: 'mpesa',
-              transactionId: callbackData.mpesaReceiptNumber,
-              updatedAt: new Date()
-            },
-            { new: true }
-          );
-          
-          if (booking) {
-            console.log("[MPESA CALLBACK] ✅ Booking updated directly from database (ID: " + booking._id + ")");
-          } else {
-            console.error("[MPESA CALLBACK] ❌ Booking not found in database with ID:", callbackData.accountRef);
-          }
-        } catch (dbError) {
-          console.error("[MPESA CALLBACK] ❌ Error updating booking:", dbError.message);
-        }
+        console.log("[MPESA CALLBACK] Cache cleared for accountRef");
       }
       
     } else {
