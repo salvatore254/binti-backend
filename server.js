@@ -97,6 +97,67 @@ app.get("/api/health", (req, res) => {
   }
 });
 
+// Test email endpoint (development only)
+app.post("/api/test-email", async (req, res) => {
+  try {
+    const { email, testType = 'booking' } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email address required" });
+    }
+
+    const EmailService = require("./services/EmailService");
+    const emailService = EmailService();
+
+    let result;
+    
+    if (testType === 'booking') {
+      const testBooking = {
+        _id: 'TEST_' + Date.now(),
+        fullname: 'Test Customer',
+        phone: '+254700000000',
+        email: email,
+        venue: 'Test Venue',
+        eventDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        setupTime: '08:00',
+        totalAmount: 50000
+      };
+      result = await emailService.sendBookingConfirmation(testBooking);
+    } 
+    else if (testType === 'payment') {
+      const testBooking = {
+        _id: 'TEST_' + Date.now(),
+        fullname: 'Test Customer',
+        phone: '+254700000000',
+        email: email,
+        venue: 'Test Venue',
+        eventDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        totalAmount: 50000
+      };
+      result = await emailService.sendPaymentConfirmation(testBooking, 'TEST123456789');
+    }
+    
+    if (result.success) {
+      res.json({ 
+        success: true, 
+        message: `Test ${testType} email sent successfully to ${email}`,
+        messageId: result.messageId 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        message: `Failed to send test email: ${result.error}` 
+      });
+    }
+  } catch (err) {
+    console.error("[TEST-EMAIL] Error:", err.message);
+    res.status(500).json({ 
+      success: false, 
+      message: err.message 
+    });
+  }
+});
+
 // Root route - API info
 app.get("/", (req, res) => {
   res.json({
@@ -199,39 +260,14 @@ const initializeServer = async () => {
       console.log(`[SERVER] Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log('[SERVER] CORS enabled for: https://bintievents.vercel.app');
     });
-
-    // Graceful shutdown
-    process.on('SIGTERM', async () => {
-      console.log('[SHUTDOWN] SIGTERM received, shutting down gracefully...');
-      server.close(async () => {
-        try {
-          const { closeConnection } = require("./database/connection");
-          await closeConnection();
-        } catch (e) {
-          console.error('[SHUTDOWN] Error closing database:', e.message);
-        }
-        process.exit(0);
-      });
-    });
-
-    process.on('SIGINT', async () => {
-      console.log('[SHUTDOWN] SIGINT received, shutting down gracefully...');
-      server.close(async () => {
-        try {
-          const { closeConnection } = require("./database/connection");
-          await closeConnection();
-        } catch (e) {
-          console.error('[SHUTDOWN] Error closing database:', e.message);
-        }
-        process.exit(0);
-      });
-    });
-
   } catch (err) {
-    console.error('[SERVER] Fatal error during initialization:', err.message);
-    logger.error('Failed to initialize server: ' + err.message);
+    console.error('[SERVER] Failed to start:', err.message);
+    logger.error('Failed to start server: ' + err.message);
     process.exit(1);
   }
 };
 
+// Initialize and start the server
 initializeServer();
+
+
