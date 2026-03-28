@@ -108,21 +108,56 @@ const mpesaCallback = async (req, res, next) => {
 
       logger.info(`M-Pesa Payment Success: ${reference} from ${phone} - KES ${amount}`);
 
+      // Extract AccountReference which contains the bookingId
+      let bookingId = null;
+      Item.forEach(item => {
+        if (item.Name === 'AccountReference') bookingId = item.Value;
+      });
+
       // Update booking in MongoDB with payment confirmation
+      // Use bookingId (accountRef) as primary lookup, not phone number (more reliable)
       const Booking = query('Booking');
-      const booking = await Booking.findOneAndUpdate(
-        { mpesaPhone: phone.toString() },
-        {
-          status: 'paid',
-          paymentMethod: 'mpesa',
-          transactionId: reference,
-          updatedAt: new Date(),
-        },
-        { new: true }
-      );
+      let booking = null;
+      
+      if (bookingId) {
+        // Try to find by bookingId first (most reliable)
+        booking = await Booking.findByIdAndUpdate(
+          bookingId,
+          {
+            status: 'paid',
+            paymentMethod: 'mpesa',
+            transactionId: reference,
+            updatedAt: new Date(),
+          },
+          { new: true }
+        );
+        
+        if (booking) {
+          logger.info(`Booking ${booking._id} updated to paid status via M-Pesa (found by ID)`);
+        } else {
+          logger.warn(`Booking not found by ID ${bookingId}, trying phone lookup...`);
+        }
+      }
+      
+      // Fallback: Try phone lookup if ID lookup failed
+      if (!booking && phone) {
+        booking = await Booking.findOneAndUpdate(
+          { mpesaPhone: phone.toString() },
+          {
+            status: 'paid',
+            paymentMethod: 'mpesa',
+            transactionId: reference,
+            updatedAt: new Date(),
+          },
+          { new: true }
+        );
+        
+        if (booking) {
+          logger.info(`Booking ${booking._id} updated to paid status via M-Pesa (found by phone)`);
+        }
+      }
 
       if (booking) {
-        logger.info(`Booking ${booking._id} updated to paid status via M-Pesa`);
         
         // Send WhatsApp notifications asynchronously (non-blocking)
         (async () => {

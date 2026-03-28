@@ -257,7 +257,7 @@ router.post("/pesapal-callback", async (req, res) => {
         const statusCheck = await pesapalService.getTransactionStatus(validation.orderTrackingId);
         
         if (statusCheck.status === 'COMPLETED' || statusCheck.status === 'PENDING') {
-          console.log("[PESAPAL CALLBACK] ✅ Payment status:", statusCheck.status);
+          console.log("[PESAPAL CALLBACK]  Payment status:", statusCheck.status);
           
           // Update database with payment confirmation (use controller function)
           try {
@@ -280,9 +280,9 @@ router.post("/pesapal-callback", async (req, res) => {
             
             // Call controller function to update database
             await pesapalCallback(mockReq, mockRes);
-            console.log("[PESAPAL CALLBACK] ✅ Database updated via controller");
+            console.log("[PESAPAL CALLBACK]  Database updated via controller");
           } catch (dbError) {
-            console.error("[PESAPAL CALLBACK] ❌ Error updating database:", dbError.message);
+            console.error("[PESAPAL CALLBACK]  Error updating database:", dbError.message);
           }
           
           // Send confirmation email
@@ -292,26 +292,26 @@ router.post("/pesapal-callback", async (req, res) => {
             const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, validation.orderTrackingId);
             
             if (emailResult.success) {
-              console.log("[PESAPAL CALLBACK] ✉️ Confirmation email sent successfully");
+              console.log("[PESAPAL CALLBACK]  Confirmation email sent successfully");
             } else {
-              console.warn("[PESAPAL CALLBACK] ⚠️ Email sending failed:", emailResult.error);
+              console.warn("[PESAPAL CALLBACK]  Email sending failed:", emailResult.error);
             }
           } catch (emailError) {
-            console.error("[PESAPAL CALLBACK] ❌ Error sending confirmation email:", emailError.message);
+            console.error("[PESAPAL CALLBACK]  Error sending confirmation email:", emailError.message);
           }
           
           // Remove from cache after processing
           delete bookingCache[validation.orderTrackingId];
-          console.log("[PESAPAL CALLBACK] Booking data cleared from cache");
+          console.log("[PESAPAL CALLBACK]  Booking data cleared from cache");
         } else {
-          console.warn("[PESAPAL CALLBACK] Payment not completed. Status:", statusCheck.status);
+          console.warn("[PESAPAL CALLBACK]  Payment not completed. Status:", statusCheck.status);
         }
       } catch (statusError) {
-        console.error("[PESAPAL CALLBACK] Failed to check payment status:", statusError.message);
+        console.error("[PESAPAL CALLBACK]  Failed to check payment status:", statusError.message);
       }
     } else {
-      console.warn("[PESAPAL CALLBACK] ⚠️ No cached booking found for", validation.orderTrackingId);
-      console.warn("[PESAPAL CALLBACK] Available cache keys:", Object.keys(bookingCache));
+      console.warn("[PESAPAL CALLBACK]  No cached booking found for", validation.orderTrackingId);
+      console.warn("[PESAPAL CALLBACK]  Available cache keys:", Object.keys(bookingCache));
     }
 
     // Always respond 200 OK to Pesapal (acknowledges receipt)
@@ -343,6 +343,7 @@ router.post("/mpesa-callback", async (req, res) => {
       console.log("[MPESA CALLBACK] Receipt:", callbackData.mpesaReceiptNumber);
       console.log("[MPESA CALLBACK] Amount:", callbackData.amount);
       console.log("[MPESA CALLBACK] Phone:", callbackData.phoneNumber);
+      console.log("[MPESA CALLBACK] AccountRef (BookingID):", callbackData.accountRef);
 
       // Retrieve cached booking data
       const cachedBooking = bookingCache[callbackData.accountRef];
@@ -350,50 +351,87 @@ router.post("/mpesa-callback", async (req, res) => {
       if (cachedBooking) {
         console.log("[MPESA CALLBACK] Found cached booking data for", cachedBooking.fullname);
         
-        // Update database with payment confirmation (use controller function)
+        // Update database with payment confirmation
+        // Try to update by bookingId (accountRef) first, which is most reliable
         try {
-          // Prepare request object for controller with the parsed callback data
-          const mockReq = {
-            body: req.body
-          };
-          const mockRes = {
-            status: (code) => ({
-              json: (data) => {
-                console.log(`[MPESA CALLBACK] Database update response: ${code}`, data);
-                return this;
-              }
-            }),
-            sendStatus: (code) => console.log(`[MPESA CALLBACK] Database update sent status: ${code}`)
-          };
+          const booking = await Booking.findByIdAndUpdate(
+            callbackData.accountRef,
+            {
+              status: 'paid',
+              paymentMethod: 'mpesa',
+              transactionId: callbackData.mpesaReceiptNumber,
+              updatedAt: new Date()
+            },
+            { new: true }
+          );
           
-          // Call controller function to update database
-          await mpesaCallback(mockReq, mockRes);
-          console.log("[MPESA CALLBACK] Database updated via controller");
+          if (booking) {
+            console.log("[MPESA CALLBACK] ✅ Booking status updated to PAID (ID: " + booking._id + ")");
+          } else {
+            console.warn("[MPESA CALLBACK] ⚠️  Booking not found by ID:", callbackData.accountRef);
+            // Try fallback: update via mpesaPhone
+            const fallbackBooking = await Booking.findOneAndUpdate(
+              { mpesaPhone: callbackData.phoneNumber },
+              {
+                status: 'paid',
+                paymentMethod: 'mpesa',
+                transactionId: callbackData.mpesaReceiptNumber,
+                updatedAt: new Date()
+              },
+              { new: true }
+            );
+            if (fallbackBooking) {
+              console.log("[MPESA CALLBACK] ✅ Booking updated via phone fallback (ID: " + fallbackBooking._id + ")");
+            }
+          }
         } catch (dbError) {
-          console.error("[MPESA CALLBACK] Error updating database:", dbError.message);
+          console.error("[MPESA CALLBACK] ❌ Error updating booking status:", dbError.message);
         }
         
-        // Send confirmation email
+        // Send confirmation email asynchronously (non-blocking)
         try {
           console.log("[MPESA CALLBACK] Sending confirmation email to", cachedBooking.email);
           const emailService = getEmailService();
           const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, callbackData.mpesaReceiptNumber);
           
           if (emailResult.success) {
-            console.log("[MPESA CALLBACK] Confirmation email sent successfully (ID:", emailResult.messageId, ")");
+            console.log("[MPESA CALLBACK] ✅ Confirmation email sent successfully (ID:", emailResult.messageId, ")");
           } else {
-            console.warn("[MPESA CALLBACK] Email sending failed:", emailResult.error);
+            console.warn("[MPESA CALLBACK] ⚠️  Email sending failed:", emailResult.error);
           }
         } catch (emailError) {
-          console.error("[MPESA CALLBACK] Error sending confirmation email:", emailError.message);
+          console.error("[MPESA CALLBACK] ❌ Error sending confirmation email:", emailError.message);
         }
         
         // Remove from cache after processing
         delete bookingCache[callbackData.accountRef];
         console.log("[MPESA CALLBACK] Booking data cleared from cache");
       } else {
-        console.warn("[MPESA CALLBACK] No cached booking found for", callbackData.accountRef);
+        console.warn("[MPESA CALLBACK] ⚠️  No cached booking found for accountRef:", callbackData.accountRef);
         console.warn("[MPESA CALLBACK] Available cache keys:", Object.keys(bookingCache));
+        console.warn("[MPESA CALLBACK] Attempting database update anyway by ID...");
+        
+        // Try direct database update even without cache
+        try {
+          const booking = await Booking.findByIdAndUpdate(
+            callbackData.accountRef,
+            {
+              status: 'paid',
+              paymentMethod: 'mpesa',
+              transactionId: callbackData.mpesaReceiptNumber,
+              updatedAt: new Date()
+            },
+            { new: true }
+          );
+          
+          if (booking) {
+            console.log("[MPESA CALLBACK] ✅ Booking updated directly from database (ID: " + booking._id + ")");
+          } else {
+            console.error("[MPESA CALLBACK] ❌ Booking not found in database with ID:", callbackData.accountRef);
+          }
+        } catch (dbError) {
+          console.error("[MPESA CALLBACK] ❌ Error updating booking:", dbError.message);
+        }
       }
       
     } else {
