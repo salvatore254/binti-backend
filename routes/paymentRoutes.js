@@ -456,24 +456,95 @@ router.post("/mpesa-callback", async (req, res) => {
       console.log("[MPESA CALLBACK] ResultDesc:", callbackData.resultDesc);
       console.log("[MPESA CALLBACK] Explanation:", callbackData.resultCodeDescription);
       
-      // Update booking status to reflect payment failure
+      // NOTE: Error callbacks (1037, etc.) may NOT include AccountReference
+      // Try lookup by phone number first, then fall back to cache or accountRef
+      let failedBooking = null;
+      let cachedBooking = callbackData.accountRef ? bookingCache[callbackData.accountRef] : null;
+      
+      console.log("[MPESA CALLBACK] AccountRef from callback:", callbackData.accountRef || "(empty/null)");
+      console.log("[MPESA CALLBACK] Phone from callback:", callbackData.phoneNumber || "(empty/null)");
+      
+      // Try to update booking status to reflect payment failure
       try {
-        const booking = await Booking.findOneAndUpdate(
-          { _id: callbackData.accountRef },
-          {
-            status: 'payment_failed',
-            paymentFailureReason: callbackData.resultDesc,
-            paymentFailureCode: callbackData.resultCode,
-            lastPaymentAttempt: new Date(),
-            lastPaymentError: callbackData.resultCodeDescription
-          },
-          { new: true }
-        );
+        // If we have a phone number, use phone-based lookup (more reliable)
+        if (callbackData.phoneNumber) {
+          const mpesaPhone = callbackData.phoneNumber.toString();
+          const withPlus = '+' + mpesaPhone;
+          const withZero = '0' + mpesaPhone.substring(3);
+          
+          console.log("[MPESA CALLBACK] Attempting failure update by phone...");
+          
+          failedBooking = await Booking.findOneAndUpdate(
+            {
+              $or: [
+                { mpesaPhone: mpesaPhone },
+                { mpesaPhone: withPlus },
+                { mpesaPhone: withZero }
+              ]
+            },
+            {
+              status: 'payment_failed',
+              paymentFailureReason: callbackData.resultDesc,
+              paymentFailureCode: callbackData.resultCode,
+              lastPaymentAttempt: new Date(),
+              lastPaymentError: callbackData.resultCodeDescription
+            },
+            { new: true }
+          );
+          
+          if (failedBooking) {
+            console.log("[MPESA CALLBACK] ✅ Payment failure recorded for booking (found by phone)");
+          }
+        }
         
-        if (booking) {
-          console.log("[MPESA CALLBACK] Booking status updated to 'payment_failed'");
-        } else {
-          console.warn("[MPESA CALLBACK] Booking not found for:", callbackData.accountRef);
+        // If phone lookup failed, try with cached booking ID
+        if (!failedBooking && cachedBooking && cachedBooking._id) {
+          console.log("[MPESA CALLBACK] Phone lookup failed, trying cached booking...");
+          
+          failedBooking = await Booking.findByIdAndUpdate(
+            cachedBooking._id,
+            {
+              status: 'payment_failed',
+              paymentFailureReason: callbackData.resultDesc,
+              paymentFailureCode: callbackData.resultCode,
+              lastPaymentAttempt: new Date(),
+              lastPaymentError: callbackData.resultCodeDescription
+            },
+            { new: true }
+          );
+          
+          if (failedBooking) {
+            console.log("[MPESA CALLBACK] ✅ Payment failure recorded via cached ID");
+          }
+        }
+        
+        // Last resort: try with accountRef if it's not null
+        if (!failedBooking && callbackData.accountRef) {
+          console.log("[MPESA CALLBACK] No match by phone, trying accountRef...");
+          
+          failedBooking = await Booking.findOneAndUpdate(
+            { _id: callbackData.accountRef },
+            {
+              status: 'payment_failed',
+              paymentFailureReason: callbackData.resultDesc,
+              paymentFailureCode: callbackData.resultCode,
+              lastPaymentAttempt: new Date(),
+              lastPaymentError: callbackData.resultCodeDescription
+            },
+            { new: true }
+          );
+          
+          if (failedBooking) {
+            console.log("[MPESA CALLBACK] ✅ Payment failure recorded via accountRef");
+          }
+        }
+        
+        if (!failedBooking) {
+          console.error("[MPESA CALLBACK] ❌ Could not find booking to mark as failed");
+          console.error("[MPESA CALLBACK] Callback data available:");
+          console.error("  - Phone:", callbackData.phoneNumber || "null");
+          console.error("  - AccountRef:", callbackData.accountRef || "null");
+          console.error("  - Cached:", !!cachedBooking);
         }
       } catch (dbError) {
         console.error("[MPESA CALLBACK] Error updating booking status:", dbError.message);

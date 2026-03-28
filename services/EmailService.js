@@ -33,10 +33,11 @@ class EmailService {
       },
       pool: {
         maxConnections: 1,
-        maxMessages: 5,
+        maxMessages: 10,
       },
-      connectionTimeout: 10000, // 10 second timeout
-      socketTimeout: 10000,     // 10 second socket timeout
+      connectionTimeout: 20000, // 20 second timeout (Render needs more time)
+      socketTimeout: 20000,     // 20 second socket timeout
+      greetingTimeout: 10000,   // 10 second greeting timeout
       tls: {
         rejectUnauthorized: false // Relaxed for cloud environments like Render
       }
