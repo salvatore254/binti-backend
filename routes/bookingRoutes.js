@@ -329,198 +329,199 @@ router.post("/confirm", async (req, res) => {
       });
     }
 
-    // Calculate pricing (supports package, tents, or both)
-    let total = 0;
-    const breakdown = {};
-    let hasTentConfigs = tentConfigs && Array.isArray(tentConfigs) && tentConfigs.length > 0;
-    let hasOldTentFormat = tentType && (tentType !== 'none');
-    
-    // If using new multi-config system
-    if (hasTentConfigs) {
-      // Add package if provided
-      if (hasPackage) {
-        total += packageBasePrice;
-        breakdown.package = { 
-          name: packageName || 'Selected Package', 
-          basePrice: packageBasePrice 
-        };
-      }
+    // PERFORMANCE OPTIMIZATION: Use pre-calculated totalAmount if provided by frontend
+    // (Frontend should have already called /calculate endpoint)
+    // If totalAmount is provided, skip expensive recalculation
+    let total = req.body.totalAmount || 0;
+    let breakdown = req.body.breakdown || {};
+    let skipCalculation = total > 0; // Use provided values if totalAmount included
+
+    // If totalAmount not provided, calculate it (backward compatibility, slower)
+    if (!skipCalculation) {
+      console.log('[CONFIRM] totalAmount not provided - fallback to calculation');
+      let hasTentConfigs = tentConfigs && Array.isArray(tentConfigs) && tentConfigs.length > 0;
+      let hasOldTentFormat = tentType && (tentType !== 'none');
       
-      // Calculate all tent configurations
-      let tentTotal = 0;
-      const tentDetails = [];
-      
-      for (const config of tentConfigs) {
-        let configCost = 0;
+      // If using new multi-config system
+      if (hasTentConfigs) {
+        // Add package if provided
+        if (hasPackage) {
+          total += packageBasePrice;
+          breakdown.package = { 
+            name: packageName || 'Selected Package', 
+            basePrice: packageBasePrice 
+          };
+        }
         
-        if (config.type === 'stretch') {
-          if (!config.size) {
-            return res.status(400).json({ success: false, message: "Stretch tent requires size specification." });
+        // Calculate all tent configurations
+        let tentTotal = 0;
+        const tentDetails = [];
+        
+        for (const config of tentConfigs) {
+          let configCost = 0;
+          
+          if (config.type === 'stretch') {
+            if (!config.size) {
+              return res.status(400).json({ success: false, message: "Stretch tent requires size specification." });
+            }
+            const parts = config.size.split('x').map(p => parseFloat(p));
+            if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
+              return res.status(400).json({ success: false, message: `Invalid stretch tent size: ${config.size}` });
+            }
+            const area = parts[0] * parts[1];
+            configCost = Math.round(area * 250);
+            tentDetails.push({ type: 'stretch', size: config.size, area, cost: configCost });
+          } 
+          else if (config.type === 'aframe' || config.type === 'a-frame') {
+            const sectionCount = config.sections || 1;
+            configCost = 40000 * parseInt(sectionCount);
+            tentDetails.push({ type: 'a-frame', sections: sectionCount, cost: configCost });
+          } 
+          else if (config.type === 'bline' || config.type === 'b-line') {
+            const bline_config = config.config || '100'; // default to 100 guest
+            configCost = bline_config === '50' ? 30000 : 40000;
+            tentDetails.push({ type: 'b-line', config: bline_config, cost: configCost });
+          } 
+          else if (config.type === 'cheese') {
+            configCost = 15000;
+            tentDetails.push({ type: 'cheese', color: config.color || 'white', cost: configCost });
           }
-          const parts = config.size.split('x').map(p => parseFloat(p));
+          else if (config.type === 'highpeak') {
+            const config_type = config.config || '100'; // default to 100 seater
+            configCost = config_type === '50' ? 5000 : 10000;
+            tentDetails.push({ type: 'highpeak', config: config_type, cost: configCost });
+          }
+          else if (config.type === 'pergola') {
+            configCost = 20000;
+            tentDetails.push({ type: 'pergola', cost: configCost });
+          }
+          tentTotal += configCost;
+        }
+        
+        if (tentTotal > 0) {
+          total += tentTotal;
+          breakdown.tent = { 
+            type: 'multi-config', 
+            configurations: tentDetails, 
+            cost: tentTotal,
+            count: tentConfigs.length
+          };
+        }
+      } 
+      // Fallback to old single-tent format (for backward compatibility)
+      else if (hasOldTentFormat) {
+        // Add package if provided
+        if (hasPackage) {
+          total += packageBasePrice;
+          breakdown.package = { 
+            name: packageName || 'Selected Package', 
+            basePrice: packageBasePrice 
+          };
+        }
+        
+        // Calculate single tent
+        if (tentType === "stretch") {
+          if (!tentSize || typeof tentSize !== "string") {
+            return res.status(400).json({ success: false, message: "Missing or invalid tentSize for stretch tent." });
+          }
+          const parts = tentSize.split("x").map(p => parseFloat(p));
           if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
-            return res.status(400).json({ success: false, message: `Invalid stretch tent size: ${config.size}` });
+            return res.status(400).json({ success: false, message: "Invalid stretch tent size format." });
           }
           const area = parts[0] * parts[1];
-          configCost = Math.round(area * 250);
-          tentDetails.push({ type: 'stretch', size: config.size, area, cost: configCost });
-        } 
-        else if (config.type === 'aframe' || config.type === 'a-frame') {
-          const sectionCount = config.sections || 1;
-          configCost = 40000 * parseInt(sectionCount);
-          tentDetails.push({ type: 'a-frame', sections: sectionCount, cost: configCost });
-        } 
-        else if (config.type === 'bline' || config.type === 'b-line') {
-          const bline_config = config.config || '100'; // default to 100 guest
-          configCost = bline_config === '50' ? 30000 : 40000;
-          tentDetails.push({ type: 'b-line', config: bline_config, cost: configCost });
-        } 
-        else if (config.type === 'cheese') {
-          configCost = 15000;
-          tentDetails.push({ type: 'cheese', color: config.color || 'white', cost: configCost });
+          const tentCost = Math.round(area * 250);
+          total += tentCost;
+          breakdown.tent = { type: "stretch", size: tentSize, area: area, cost: tentCost };
+        } else if (tentType === "a-frame" || tentType === "aframe" || tentType === "a_frame") {
+          const sectionCount = sections ? parseInt(sections, 10) || 1 : 1;
+          const tentCost = 40000 * sectionCount;
+          total += tentCost;
+          breakdown.tent = { type: "a-frame", sections: sectionCount, cost: tentCost };
+        } else if (tentType === "cheese") {
+          const tentCost = 15000;
+          total += tentCost;
+          breakdown.tent = { type: "cheese", cost: tentCost };
+        } else if (tentType === "pergola") {
+          const tentCost = 20000;
+          total += tentCost;
+          breakdown.tent = { type: "pergola", cost: tentCost };
+        } else if (tentType === "highpeak" || tentType === "high-peak") {
+          const config_type = req.body.highpeakConfig || '100';
+          const tentCost = config_type === '50' ? 5000 : 10000;
+          total += tentCost;
+          breakdown.tent = { type: "high-peak", config: config_type, cost: tentCost };
         }
-        else if (config.type === 'highpeak') {
-          const config_type = config.config || '100'; // default to 100 seater
-          configCost = config_type === '50' ? 5000 : 10000;
-          tentDetails.push({ type: 'highpeak', config: config_type, cost: configCost });
-        }
-        else if (config.type === 'pergola') {
-          configCost = 20000;
-          tentDetails.push({ type: 'pergola', cost: configCost });
-        }
-        console.log("Tent configuration added:", config);
-        tentTotal += configCost;
-      }
-      
-      total += tentTotal;
-      breakdown.tent = { 
-        type: 'multi-config', 
-        configurations: tentDetails, 
-        cost: tentTotal,
-        count: tentConfigs.length
-      };
-    } 
-    // Fallback to old single-tent format (for backward compatibility)
-    else if (hasOldTentFormat) {
-      // Add package if provided
-      if (hasPackage) {
+      } 
+      // Package only
+      else if (hasPackage) {
         total += packageBasePrice;
         breakdown.package = { 
           name: packageName || 'Selected Package', 
           basePrice: packageBasePrice 
         };
+        breakdown.tent = { type: "package-included", cost: 0 };
+      } 
+      // Neither package nor tents provided - error
+      else {
+        return res.status(400).json({
+          success: false,
+          message: "Please select either a package or add tent configurations."
+        });
       }
-      
-      // Calculate single tent
-      if (tentType === "stretch") {
-        if (!tentSize || typeof tentSize !== "string") {
-          return res.status(400).json({ success: false, message: "Missing or invalid tentSize for stretch tent." });
+
+      // Add lighting if provided
+      if (lighting === "yes" || lighting === true) {
+        total += 12000;
+        breakdown.lighting = 12000;
+      }
+
+      // Add add-ons
+      if (pasound === "yes" || pasound === true) {
+        total += 8000;
+        breakdown.pasound = 8000;
+      }
+      if (dancefloor === "yes" || dancefloor === true) {
+        total += 10000;
+        breakdown.dancefloor = 10000;
+      }
+      if (stagepodium === "yes" || stagepodium === true) {
+        total += 15000;
+        breakdown.stagepodium = 15000;
+      }
+      if (welcomesigns === "yes" || welcomesigns === true) {
+        total += 3000;
+        breakdown.welcomesigns = 3000;
+      }
+      if (decor === "yes" || decor === true) {
+        breakdown.decor = "Upon Inquiry";
+      }
+
+      // OLD format transport (legacy)
+      if (transport === "yes" || transport === true) {
+        if (location && typeof location === "string") {
+          const transportCalc = TransportService.calculateTransportCost(location);
+          total += transportCalc.transportCost;
+          breakdown.transport = {
+            cost: transportCalc.transportCost,
+            zone: transportCalc.zoneName,
+            serviceArea: transportCalc.serviceArea,
+            zoneInfo: transportCalc.zoneInfo
+          };
         }
-        const parts = tentSize.split("x").map(p => parseFloat(p));
-        if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) {
-          return res.status(400).json({ success: false, message: "Invalid stretch tent size format. Use 'widthxheight' e.g. 22x15." });
-        }
-        const area = parts[0] * parts[1];
-        const tentCost = Math.round(area * 250);
-        total += tentCost;
-        breakdown.tent = { type: "stretch", size: tentSize, area: area, cost: tentCost };
-      } else if (tentType === "a-frame" || tentType === "aframe" || tentType === "a_frame") {
-        const sectionCount = sections ? parseInt(sections, 10) || 1 : 1;
-        const tentCost = 40000 * sectionCount;
-        total += tentCost;
-        breakdown.tent = { type: "a-frame", sections: sectionCount, cost: tentCost };
-      } else if (tentType === "b-line" || tentType === "bline") {
-        const bline_config = req.body.blineConfig || '100'; // Get config from request
-        const tentCost = bline_config === '50' ? 30000 : 40000;
-        total += tentCost;
-        breakdown.tent = { type: "b-line", config: bline_config, cost: tentCost };
-      } else if (tentType === "cheese") {
-        const tentCost = 15000;
-        total += tentCost;
-        breakdown.tent = { type: "cheese", cost: tentCost };
-      } else if (tentType === "highpeak" || tentType === "high-peak") {
-        const config_type = req.body.highpeakConfig || '100'; // Get config from request
-        const tentCost = config_type === '50' ? 5000 : 10000;
-        total += tentCost;
-        breakdown.tent = { type: "high-peak", config: config_type, cost: tentCost };
-      } else if (tentType === "pergola") {
-        const tentCost = 20000;
-        total += tentCost;
-        breakdown.tent = { type: "pergola", cost: tentCost };
       }
-    } 
-    // Package only
-    else if (hasPackage) {
-      total += packageBasePrice;
-      breakdown.package = { 
-        name: packageName || 'Selected Package', 
-        basePrice: packageBasePrice 
-      };
-      breakdown.tent = { type: "package-included", cost: 0 };
-    } 
-    // Neither package nor tents provided - error
-    else {
-      return res.status(400).json({
-        success: false,
-        message: "Please select either a package or add tent configurations."
-      });
     }
 
-    if (lighting === "yes" || lighting === true) {
-      total += 12000;
-      breakdown.lighting = 12000;
-    }
-
-    if (transport === "yes" || transport === true) {
-      if (!location || typeof location !== "string") {
-        return res.status(400).json({ success: false, message: "Location is required to calculate transport cost." });
-      }
-      const transportCalc = TransportService.calculateTransportCost(location);
-      total += transportCalc.transportCost;
-      breakdown.transport = {
-        cost: transportCalc.transportCost,
-        zone: transportCalc.zoneName,
-        serviceArea: transportCalc.serviceArea,
-        zoneInfo: transportCalc.zoneInfo
-      };
-    }
-
-    // Add-ons pricing
-    if (pasound === "yes" || pasound === true) {
-      total += 8000;
-      breakdown.pasound = 8000;
-    }
-
-    if (dancefloor === "yes" || dancefloor === true) {
-      total += 10000;
-      breakdown.dancefloor = 10000;
-    }
-
-    if (stagepodium === "yes" || stagepodium === true) {
-      total += 15000;
-      breakdown.stagepodium = 15000;
-    }
-
-    if (welcomesigns === "yes" || welcomesigns === true) {
-      total += 3000;
-      breakdown.welcomesigns = 3000;
-    }
-
-    if (decor === "yes" || decor === true) {
-      breakdown.decor = "Upon Inquiry";
-    }
-
-    // TRANSPORT: Handle new transport format
-    if (transportArrangement === 'arrange' && transportVenue) {
+    // Ensure transport is set if arranged (even if totalAmount was provided)
+    if (transportArrangement === 'arrange' && transportVenue && !breakdown.transport) {
       try {
         const transportCalc = TransportService.calculateTransportCost(transportVenue);
-        total += transportCalc.transportCost;
         breakdown.transport = {
           cost: transportCalc.transportCost,
           zone: transportCalc.zoneName,
           serviceArea: transportCalc.serviceArea,
           zoneInfo: transportCalc.zoneInfo
         };
+        total += transportCalc.transportCost;
       } catch (transportErr) {
         console.error('[CONFIRM] Transport calculation failed:', transportErr.message);
         return res.status(500).json({
@@ -528,7 +529,7 @@ router.post("/confirm", async (req, res) => {
           message: "Transport calculation failed: " + transportErr.message
         });
       }
-    } else {
+    } else if (!breakdown.transport) {
       breakdown.transport = { cost: 0, arrangement: 'own' };
     }
 
