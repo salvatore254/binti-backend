@@ -115,6 +115,10 @@ const bookingSchema = new mongoose.Schema({
     type: String, // HH:MM format
     required: true,
   },
+  eventDate: {
+    type: Date,
+    required: true,
+  },
 
   // Package Information
   packageName: String,

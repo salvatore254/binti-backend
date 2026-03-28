@@ -24,7 +24,7 @@ router.post("/calculate", (req, res) => {
       packageName, 
       packageBasePrice,
       lighting, transportArrangement, transportVenue, pasound, dancefloor, stagepodium, welcomesigns, decor, location, sections,
-      setupTime 
+      setupTime, eventDate
     } = req.body;
 
     console.log("/calculate endpoint called with location:", location);
@@ -266,7 +266,7 @@ router.post("/confirm", async (req, res) => {
       packageName, packageBasePrice,
       tentType, tentSize, lighting, transportArrangement, transportVenue, decor, pasound, dancefloor, stagepodium, welcomesigns,
       location, sections, termsAccepted, paymentMethod, mpesaPhone,
-      setupTime, additionalInfo
+      setupTime, eventDate, additionalInfo
     } = req.body;
 
     console.log("[CONFIRM] Endpoint called with:", {
@@ -553,6 +553,7 @@ router.post("/confirm", async (req, res) => {
       venue,
       location,
       setupTime,
+      eventDate: eventDate ? new Date(eventDate) : new Date(),
       packageName,
       packageBasePrice,
       additionalInfo,
