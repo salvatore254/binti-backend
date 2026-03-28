@@ -2,13 +2,21 @@
 const express = require("express");
 const router = express.Router();
 const TransportService = require("../services/TransportService");
+const EmailService = require("../services/EmailService");
 const Booking = require("../models/Booking");
 const { v4: uuidv4 } = require("uuid");
 
 // DIAGNOSTIC: Log that routes file loaded successfully
 console.log("[BOOKING] Routes loaded successfully");
 
-// Note: EmailService is only imported when confirm endpoint is called (lazy load)
+// Initialize EmailService once at startup to avoid delays on first request
+let emailService = null;
+try {
+  emailService = EmailService(); // Call factory function to get singleton instance
+  console.log("[BOOKING] EmailService initialized");
+} catch (err) {
+  console.warn("[BOOKING] Failed to initialize EmailService:", err.message);
+}
 
 /**
  * POST /api/bookings/calculate
@@ -597,19 +605,21 @@ router.post("/confirm", async (req, res) => {
     })();
 
     // Send confirmation emails (non-blocking)
-    (async () => {
-      try {
-        const EmailService = require("../services/EmailService");
-        const emailService = EmailService();
-        const customerEmailResult = await emailService.sendBookingConfirmation(booking);
-        const adminEmailResult = await emailService.sendAdminNotification(booking, booking.depositAmount);
-        console.log(`[EMAIL] Customer confirmation sent to ${booking.email}`);
-        console.log(`[EMAIL] Admin notification sent to ${process.env.ADMIN_EMAIL}`);
-      } catch (emailErr) {
-        console.warn('[EMAIL] Service unavailable:', emailErr.message);
-        console.warn('Booking was created successfully but confirmation emails could not be sent.');
-      }
-    })();
+    if (emailService) {
+      (async () => {
+        try {
+          const customerEmailResult = await emailService.sendBookingConfirmation(booking);
+          const adminEmailResult = await emailService.sendAdminNotification(booking, booking.depositAmount);
+          console.log(`[EMAIL] Customer confirmation sent to ${booking.email}`);
+          console.log(`[EMAIL] Admin notification sent to ${process.env.ADMIN_EMAIL}`);
+        } catch (emailErr) {
+          console.warn('[EMAIL] Service unavailable:', emailErr.message);
+          console.warn('Booking was created successfully but confirmation emails could not be sent.');
+        }
+      })();
+    } else {
+      console.warn('[EMAIL] EmailService not available - emails will not be sent');
+    }
 
   } catch (err) {
     const errorTime = Date.now() - startTime;
