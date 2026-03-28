@@ -171,6 +171,17 @@ const initializeServer = async () => {
       console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASS in .env to enable');
     }
 
+    // Verify WhatsApp is configured via Africa's Talking
+    const africasTalkingApiKey = process.env.AFRICAS_TALKING_API_KEY;
+    const adminWhatsAppPhone = process.env.ADMIN_WHATSAPP_PHONE;
+    if (africasTalkingApiKey && adminWhatsAppPhone) {
+      console.log('[WHATSAPP] Africa\'s Talking configured - WhatsApp notifications enabled');
+    } else {
+      console.log('[WHATSAPP] Africa\'s Talking not configured - WhatsApp notifications disabled');
+      if (!africasTalkingApiKey) console.log('[WHATSAPP] Set AFRICAS_TALKING_API_KEY in .env to enable');
+      if (!adminWhatsAppPhone) console.log('[WHATSAPP] Set ADMIN_WHATSAPP_PHONE in .env to enable');
+    }
+
     // Initialize Invoice Scheduler (runs every 5 minutes to check for pending invoices)
     try {
       const invoiceScheduler = new InvoiceScheduler();

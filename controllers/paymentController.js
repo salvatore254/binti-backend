@@ -8,6 +8,9 @@ const logger = require('../utils/logger');
 const { validatePaymentData } = require('../validators/bookingValidator');
 const { query } = require('../database/connection');
 const InvoiceService = require('../services/InvoiceService');
+const WhatsAppService = require('../services/WhatsAppService');
+const invoiceService = new InvoiceService();
+const whatsAppService = WhatsAppService();
 
 /**
  * Process M-Pesa payment
@@ -121,8 +124,30 @@ const mpesaCallback = async (req, res, next) => {
       if (booking) {
         logger.info(`Booking ${booking._id} updated to paid status via M-Pesa`);
         
+        // Send WhatsApp notifications asynchronously (non-blocking)
+        (async () => {
+          try {
+            // Send booking confirmation to customer
+            const customerResult = await whatsAppService.sendBookingConfirmation(booking);
+            if (customerResult.success) {
+              logger.info(`[MPESA-CALLBACK] WhatsApp sent to customer: ${booking.phone}`);
+            } else {
+              logger.warn(`[MPESA-CALLBACK] Failed to send WhatsApp to customer: ${customerResult.message}`);
+            }
+            
+            // Send admin alert
+            const adminResult = await whatsAppService.sendAdminAlert(booking);
+            if (adminResult.success) {
+              logger.info(`[MPESA-CALLBACK] WhatsApp alert sent to admin`);
+            } else {
+              logger.warn(`[MPESA-CALLBACK] Failed to send admin alert: ${adminResult.message}`);
+            }
+          } catch (whatsappErr) {
+            logger.error(`[MPESA-CALLBACK] WhatsApp error:`, whatsappErr.message);
+          }
+        })();
+        
         // Send invoice asynchronously
-        const invoiceService = new InvoiceService();
         invoiceService.sendInvoice(booking).catch(err => {
           logger.error(`Failed to send invoice for booking ${booking._id}: ${err.message}`);
         });
@@ -168,8 +193,30 @@ const pesapalCallback = async (req, res, next) => {
       if (booking) {
         logger.info(`Booking ${booking._id} updated to paid status via Pesapal`);
         
+        // Send WhatsApp notifications asynchronously (non-blocking)
+        (async () => {
+          try {
+            // Send booking confirmation to customer
+            const customerResult = await whatsAppService.sendBookingConfirmation(booking);
+            if (customerResult.success) {
+              logger.info(`[PESAPAL-CALLBACK] WhatsApp sent to customer: ${booking.phone}`);
+            } else {
+              logger.warn(`[PESAPAL-CALLBACK] Failed to send WhatsApp to customer: ${customerResult.message}`);
+            }
+            
+            // Send admin alert
+            const adminResult = await whatsAppService.sendAdminAlert(booking);
+            if (adminResult.success) {
+              logger.info(`[PESAPAL-CALLBACK] WhatsApp alert sent to admin`);
+            } else {
+              logger.warn(`[PESAPAL-CALLBACK] Failed to send admin alert: ${adminResult.message}`);
+            }
+          } catch (whatsappErr) {
+            logger.error(`[PESAPAL-CALLBACK] WhatsApp error:`, whatsappErr.message);
+          }
+        })();
+        
         // Send invoice asynchronously
-        const invoiceService = new InvoiceService();
         invoiceService.sendInvoice(booking).catch(err => {
           logger.error(`Failed to send invoice for booking ${booking._id}: ${err.message}`);
         });
