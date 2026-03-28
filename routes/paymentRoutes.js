@@ -352,12 +352,32 @@ router.post("/mpesa-callback", async (req, res) => {
       let cachedBooking = bookingCache[callbackData.accountRef];
 
       // Try to update by phone number (most reliable since accountRef is truncated)
+      // IMPORTANT: Phone numbers can be stored in different formats:
+      // +254708374149, 254708374149, 0708374149
+      // M-Pesa returns: 254708374149 (no + prefix)
+      // We need to search for all variations!
+      
       if (callbackData.phoneNumber) {
         console.log("[MPESA CALLBACK] Updating booking by phone number...");
+        console.log("[MPESA CALLBACK] Phone from M-Pesa callback:", callbackData.phoneNumber);
+        
+        // Create phone variations to search for
+        const mpesaPhone = callbackData.phoneNumber.toString();  // 254708374149
+        const withPlus = '+' + mpesaPhone;                        // +254708374149
+        const withZero = '0' + mpesaPhone.substring(3);           // 0708374149
+        
+        console.log("[MPESA CALLBACK] Searching for phone variations:", { mpesaPhone, withPlus, withZero });
         
         try {
+          // Search with $or to match any variation of the phone number
           updatedBooking = await Booking.findOneAndUpdate(
-            { mpesaPhone: callbackData.phoneNumber },
+            { 
+              $or: [
+                { mpesaPhone: mpesaPhone },    // 254708374149
+                { mpesaPhone: withPlus },      // +254708374149
+                { mpesaPhone: withZero }       // 0708374149
+              ]
+            },
             {
               status: 'paid',
               paymentMethod: 'mpesa',
@@ -368,8 +388,11 @@ router.post("/mpesa-callback", async (req, res) => {
           );
           
           if (updatedBooking) {
-            console.log("[MPESA CALLBACK] ✅ Booking status updated to PAID by phone (ID: " + updatedBooking._id + ")");
+            console.log("[MPESA CALLBACK] ✅ Booking status updated to PAID by phone");
+            console.log("[MPESA CALLBACK] ✅ Found booking with mpesaPhone:", updatedBooking.mpesaPhone);
             console.log("[MPESA CALLBACK] ✅ Booking for:", updatedBooking.fullname || updatedBooking.email);
+          } else {
+            console.warn("[MPESA CALLBACK] ⚠️  Phone lookup failed for all variations:", { mpesaPhone, withPlus, withZero });
           }
         } catch (dbError) {
           console.error("[MPESA CALLBACK] ❌ Error updating by phone:", dbError.message);
