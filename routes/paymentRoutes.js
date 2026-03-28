@@ -170,9 +170,25 @@ router.post("/mpesa", async (req, res) => {
       description || "Binti Events Booking"
     );
 
-    // Cache booking data for confirmation email later
-    // This data comes from the frontend and includes customer & event details
+    // CRITICAL: Save checkoutRequestId on the booking document
+    // This is the ONLY reliable identifier M-Pesa returns in callbacks
+    // (AccountRef is truncated, Phone can be null in sandbox)
+    try {
+      await Booking.findByIdAndUpdate(accountRef, {
+        checkoutRequestId: result.checkoutRequestId,
+        paymentMethod: 'mpesa',
+        mpesaPhone: phone,
+        updatedAt: new Date()
+      });
+      console.log(`[PAYMENT] ✅ Saved checkoutRequestId ${result.checkoutRequestId} on booking ${accountRef}`);
+    } catch (dbErr) {
+      console.error(`[PAYMENT] ⚠️ Failed to save checkoutRequestId on booking:`, dbErr.message);
+    }
+
+    // Cache booking data keyed by checkoutRequestId (NOT accountRef)
+    // This is used when callback comes back to send confirmation emails
     const bookingData = {
+      _id: accountRef,
       id: accountRef,
       fullname: req.body.fullName || req.body.fullname || 'Guest',
       email: req.body.email || '',
@@ -184,18 +200,19 @@ router.post("/mpesa", async (req, res) => {
       totalAmount: amount,
       mpesaPhone: phone,
       accountRef: accountRef,
+      checkoutRequestId: result.checkoutRequestId,
       timestamp: new Date().toISOString()
     };
 
-    // Store in cache with accountRef as key
-    bookingCache[accountRef] = bookingData;
-    console.log(`[PAYMENT] Booking data cached for ${accountRef}`);
+    // Store in cache with checkoutRequestId as key (reliable in callback)
+    bookingCache[result.checkoutRequestId] = bookingData;
+    console.log(`[PAYMENT] Booking data cached with checkoutRequestId: ${result.checkoutRequestId}`);
 
     // Auto-clean cache after 30 minutes (payment should complete within this time)
     setTimeout(() => {
-      if (bookingCache[accountRef]) {
-        delete bookingCache[accountRef];
-        console.log(`[PAYMENT] Cache expired for ${accountRef}`);
+      if (bookingCache[result.checkoutRequestId]) {
+        delete bookingCache[result.checkoutRequestId];
+        console.log(`[PAYMENT] Cache expired for checkoutRequestId: ${result.checkoutRequestId}`);
       }
     }, 30 * 60 * 1000);
 
@@ -335,226 +352,91 @@ router.post("/mpesa-callback", async (req, res) => {
     // Validate the callback using M-Pesa service validation
     const callbackData = mpesaService.validateCallback(req.body);
     
-    console.log("[MPESA CALLBACK] Parsed callback:", callbackData);
+    console.log("[MPESA CALLBACK] Parsed callback data:");
+    console.log("  CheckoutRequestID:", callbackData.checkoutRequestId);
+    console.log("  ResultCode:", callbackData.resultCode);
+    console.log("  ResultDesc:", callbackData.resultDesc);
+
+    // CheckoutRequestID is the ONLY reliable identifier from M-Pesa callbacks
+    // AccountRef and PhoneNumber can be null (especially in sandbox or error callbacks)
+    const checkoutRequestId = callbackData.checkoutRequestId;
+    
+    if (!checkoutRequestId) {
+      console.error("[MPESA CALLBACK] ❌ No CheckoutRequestID in callback! Cannot process.");
+      return res.sendStatus(200);
+    }
+
+    // Look up booking by checkoutRequestId (saved when STK push was initiated)
+    let booking = await Booking.findOne({ checkoutRequestId: checkoutRequestId });
+    let cachedBooking = bookingCache[checkoutRequestId] || null;
+    
+    console.log("[MPESA CALLBACK] Booking found by checkoutRequestId:", !!booking);
+    console.log("[MPESA CALLBACK] Cached booking found:", !!cachedBooking);
+
+    if (!booking && cachedBooking && cachedBooking._id) {
+      // Fallback: try finding by cached booking ID
+      console.log("[MPESA CALLBACK] Trying cached booking ID fallback:", cachedBooking._id);
+      booking = await Booking.findById(cachedBooking._id);
+    }
+
+    if (!booking) {
+      console.error("[MPESA CALLBACK] ❌ No booking found for checkoutRequestId:", checkoutRequestId);
+      console.error("[MPESA CALLBACK] Cache keys available:", Object.keys(bookingCache));
+      return res.sendStatus(200);
+    }
+
+    console.log("[MPESA CALLBACK] ✅ Found booking:", booking._id, "for", booking.fullname);
 
     // Handle successful payment (resultCode 0 = success)
     if (callbackData.resultCode === 0) {
       console.log("[MPESA CALLBACK] Payment successful!");
       console.log("[MPESA CALLBACK] Receipt:", callbackData.mpesaReceiptNumber);
       console.log("[MPESA CALLBACK] Amount:", callbackData.amount);
-      console.log("[MPESA CALLBACK] Phone:", callbackData.phoneNumber);
-      console.log("[MPESA CALLBACK] AccountRef (Truncated to 12 chars):", callbackData.accountRef);
 
-      // NOTE: AccountRef from M-Pesa is truncated to 12 chars, so we use phone as primary lookup
-      // Phone number is always reliable for finding the correct booking
-      
-      let updatedBooking = null;
-      let cachedBooking = bookingCache[callbackData.accountRef];
+      booking.status = 'paid';
+      booking.paymentMethod = 'mpesa';
+      booking.transactionId = callbackData.mpesaReceiptNumber;
+      booking.updatedAt = new Date();
+      await booking.save();
 
-      // Try to update by phone number (most reliable since accountRef is truncated)
-      // IMPORTANT: Phone numbers can be stored in different formats:
-      // +254708374149, 254708374149, 0708374149
-      // M-Pesa returns: 254708374149 (no + prefix)
-      // We need to search for all variations!
-      
-      if (callbackData.phoneNumber) {
-        console.log("[MPESA CALLBACK] Updating booking by phone number...");
-        console.log("[MPESA CALLBACK] Phone from M-Pesa callback:", callbackData.phoneNumber);
+      console.log("[MPESA CALLBACK] ✅ Booking status updated to PAID (ID:", booking._id, ")");
+
+      // Send confirmation email
+      try {
+        const emailData = cachedBooking || booking;
+        console.log("[MPESA CALLBACK] Sending payment confirmation email to", emailData.email);
+        const emailService = getEmailService();
+        const emailResult = await emailService.sendPaymentConfirmation(emailData, callbackData.mpesaReceiptNumber);
         
-        // Create phone variations to search for
-        const mpesaPhone = callbackData.phoneNumber.toString();  // 254708374149
-        const withPlus = '+' + mpesaPhone;                        // +254708374149
-        const withZero = '0' + mpesaPhone.substring(3);           // 0708374149
-        
-        console.log("[MPESA CALLBACK] Searching for phone variations:", { mpesaPhone, withPlus, withZero });
-        
-        try {
-          // Search with $or to match any variation of the phone number
-          updatedBooking = await Booking.findOneAndUpdate(
-            { 
-              $or: [
-                { mpesaPhone: mpesaPhone },    // 254708374149
-                { mpesaPhone: withPlus },      // +254708374149
-                { mpesaPhone: withZero }       // 0708374149
-              ]
-            },
-            {
-              status: 'paid',
-              paymentMethod: 'mpesa',
-              transactionId: callbackData.mpesaReceiptNumber,
-              updatedAt: new Date()
-            },
-            { new: true }
-          );
-          
-          if (updatedBooking) {
-            console.log("[MPESA CALLBACK] ✅ Booking status updated to PAID by phone");
-            console.log("[MPESA CALLBACK] ✅ Found booking with mpesaPhone:", updatedBooking.mpesaPhone);
-            console.log("[MPESA CALLBACK] ✅ Booking for:", updatedBooking.fullname || updatedBooking.email);
-          } else {
-            console.warn("[MPESA CALLBACK] ⚠️  Phone lookup failed for all variations:", { mpesaPhone, withPlus, withZero });
-          }
-        } catch (dbError) {
-          console.error("[MPESA CALLBACK] ❌ Error updating by phone:", dbError.message);
+        if (emailResult.success) {
+          console.log("[MPESA CALLBACK] ✅ Confirmation email sent (ID:", emailResult.messageId, ")");
+        } else {
+          console.warn("[MPESA CALLBACK] ⚠️  Email failed:", emailResult.error);
         }
+      } catch (emailError) {
+        console.error("[MPESA CALLBACK] ❌ Email error:", emailError.message);
       }
 
-      // If phone lookup failed, try fallback with cached booking ID
-      if (!updatedBooking && cachedBooking && cachedBooking._id) {
-        console.log("[MPESA CALLBACK] Phone lookup failed, trying cached booking ID...");
-        try {
-          updatedBooking = await Booking.findByIdAndUpdate(
-            cachedBooking._id,
-            {
-              status: 'paid',
-              paymentMethod: 'mpesa',
-              transactionId: callbackData.mpesaReceiptNumber,
-              updatedAt: new Date()
-            },
-            { new: true }
-          );
-          
-          if (updatedBooking) {
-            console.log("[MPESA CALLBACK] ✅ Booking updated via cached ID fallback (ID: " + updatedBooking._id + ")");
-          }
-        } catch (dbError) {
-          console.error("[MPESA CALLBACK] ❌ Error updating via cached ID:", dbError.message);
-        }
-      }
-
-      // Send confirmation email if booking was updated
-      if (updatedBooking && cachedBooking) {
-        try {
-          console.log("[MPESA CALLBACK] Sending payment confirmation email to", cachedBooking.email);
-          const emailService = getEmailService();
-          const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, callbackData.mpesaReceiptNumber);
-          
-          if (emailResult.success) {
-            console.log("[MPESA CALLBACK] ✅ Confirmation email sent successfully (ID:", emailResult.messageId, ")");
-          } else {
-            console.warn("[MPESA CALLBACK] ⚠️  Email sending failed:", emailResult.error);
-          }
-        } catch (emailError) {
-          console.error("[MPESA CALLBACK] ❌ Error sending confirmation email:", emailError.message);
-        }
-      } else if (!updatedBooking) {
-        console.warn("[MPESA CALLBACK] ⚠️  Could not update booking - not found by phone or ID");
-      } else if (!cachedBooking) {
-        console.warn("[MPESA CALLBACK] ⚠️  No cached booking available for email - booking updated but no email sent");
-      }
-
-      // Clean up cache
-      if (callbackData.accountRef) {
-        delete bookingCache[callbackData.accountRef];
-        console.log("[MPESA CALLBACK] Cache cleared for accountRef");
-      }
-      
     } else {
       // Payment failed or was cancelled
-      console.log("[MPESA CALLBACK] Payment failed or cancelled");
+      console.log("[MPESA CALLBACK] Payment failed/cancelled");
       console.log("[MPESA CALLBACK] ResultCode:", callbackData.resultCode);
       console.log("[MPESA CALLBACK] ResultDesc:", callbackData.resultDesc);
-      console.log("[MPESA CALLBACK] Explanation:", callbackData.resultCodeDescription);
-      
-      // NOTE: Error callbacks (1037, etc.) may NOT include AccountReference
-      // Try lookup by phone number first, then fall back to cache or accountRef
-      let failedBooking = null;
-      let cachedBooking = callbackData.accountRef ? bookingCache[callbackData.accountRef] : null;
-      
-      console.log("[MPESA CALLBACK] AccountRef from callback:", callbackData.accountRef || "(empty/null)");
-      console.log("[MPESA CALLBACK] Phone from callback:", callbackData.phoneNumber || "(empty/null)");
-      
-      // Try to update booking status to reflect payment failure
-      try {
-        // If we have a phone number, use phone-based lookup (more reliable)
-        if (callbackData.phoneNumber) {
-          const mpesaPhone = callbackData.phoneNumber.toString();
-          const withPlus = '+' + mpesaPhone;
-          const withZero = '0' + mpesaPhone.substring(3);
-          
-          console.log("[MPESA CALLBACK] Attempting failure update by phone...");
-          
-          failedBooking = await Booking.findOneAndUpdate(
-            {
-              $or: [
-                { mpesaPhone: mpesaPhone },
-                { mpesaPhone: withPlus },
-                { mpesaPhone: withZero }
-              ]
-            },
-            {
-              status: 'payment_failed',
-              paymentFailureReason: callbackData.resultDesc,
-              paymentFailureCode: callbackData.resultCode,
-              lastPaymentAttempt: new Date(),
-              lastPaymentError: callbackData.resultCodeDescription
-            },
-            { new: true }
-          );
-          
-          if (failedBooking) {
-            console.log("[MPESA CALLBACK] ✅ Payment failure recorded for booking (found by phone)");
-          }
-        }
-        
-        // If phone lookup failed, try with cached booking ID
-        if (!failedBooking && cachedBooking && cachedBooking._id) {
-          console.log("[MPESA CALLBACK] Phone lookup failed, trying cached booking...");
-          
-          failedBooking = await Booking.findByIdAndUpdate(
-            cachedBooking._id,
-            {
-              status: 'payment_failed',
-              paymentFailureReason: callbackData.resultDesc,
-              paymentFailureCode: callbackData.resultCode,
-              lastPaymentAttempt: new Date(),
-              lastPaymentError: callbackData.resultCodeDescription
-            },
-            { new: true }
-          );
-          
-          if (failedBooking) {
-            console.log("[MPESA CALLBACK] ✅ Payment failure recorded via cached ID");
-          }
-        }
-        
-        // Last resort: try with accountRef if it's not null
-        if (!failedBooking && callbackData.accountRef) {
-          console.log("[MPESA CALLBACK] No match by phone, trying accountRef...");
-          
-          failedBooking = await Booking.findOneAndUpdate(
-            { _id: callbackData.accountRef },
-            {
-              status: 'payment_failed',
-              paymentFailureReason: callbackData.resultDesc,
-              paymentFailureCode: callbackData.resultCode,
-              lastPaymentAttempt: new Date(),
-              lastPaymentError: callbackData.resultCodeDescription
-            },
-            { new: true }
-          );
-          
-          if (failedBooking) {
-            console.log("[MPESA CALLBACK] ✅ Payment failure recorded via accountRef");
-          }
-        }
-        
-        if (!failedBooking) {
-          console.error("[MPESA CALLBACK] ❌ Could not find booking to mark as failed");
-          console.error("[MPESA CALLBACK] Callback data available:");
-          console.error("  - Phone:", callbackData.phoneNumber || "null");
-          console.error("  - AccountRef:", callbackData.accountRef || "null");
-          console.error("  - Cached:", !!cachedBooking);
-        }
-      } catch (dbError) {
-        console.error("[MPESA CALLBACK] Error updating booking status:", dbError.message);
-      }
-      
-      // Remove from cache after processing
-      if (callbackData.accountRef) {
-        delete bookingCache[callbackData.accountRef];
-      }
+
+      booking.status = 'payment_failed';
+      booking.paymentFailureReason = callbackData.resultDesc;
+      booking.paymentFailureCode = callbackData.resultCode;
+      booking.lastPaymentAttempt = new Date();
+      booking.lastPaymentError = callbackData.resultCodeDescription;
+      booking.updatedAt = new Date();
+      await booking.save();
+
+      console.log("[MPESA CALLBACK] ✅ Booking status updated to payment_failed (ID:", booking._id, ")");
     }
+
+    // Clean up cache
+    delete bookingCache[checkoutRequestId];
+    console.log("[MPESA CALLBACK] Cache cleared");
 
     // Always respond 200 to acknowledge receipt (Daraja requirement)
     res.sendStatus(200);

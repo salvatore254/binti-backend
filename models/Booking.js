@@ -154,6 +154,7 @@ const bookingSchema = new mongoose.Schema({
     default: null,
   },
   transactionId: String,
+  checkoutRequestId: String, // M-Pesa STK Push identifier - ONLY reliable callback lookup key
   
   // Payment Failure Tracking
   paymentFailureReason: String,
