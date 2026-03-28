@@ -240,6 +240,7 @@ router.post("/identify-zone", (req, res) => {
  * Returns: { success: true, booking: {...}, depositAmount: ..., message: "..." }
  */
 router.post("/confirm", async (req, res) => {
+  const startTime = Date.now();
   try {
     const {
       bookingFlow,
@@ -506,6 +507,9 @@ router.post("/confirm", async (req, res) => {
 
     // Return booking confirmation BEFORE saving to database (non-blocking)
     // This ensures quick frontend response (< 1 second)
+    const responseTime = Date.now() - startTime;
+    console.log(`⏱️  /confirm endpoint responding (took ${responseTime}ms)`);
+    
     res.json({
       success: true,
       message: "Booking processing started. Confirmation will be sent to your email.",
@@ -513,7 +517,8 @@ router.post("/confirm", async (req, res) => {
       booking: booking.toJSON(),
       depositAmount: booking.depositAmount,
       remainingAmount: booking.remainingAmount,
-      status: "processing"
+      status: "processing",
+      responseTime: `${responseTime}ms`
     });
 
     // Save booking to MongoDB asynchronously (non-blocking - don't wait before responding)
@@ -543,11 +548,14 @@ router.post("/confirm", async (req, res) => {
     })();
 
   } catch (err) {
-    console.error("Error confirming booking:", err);
+    const errorTime = Date.now() - startTime;
+    console.error(`❌ /confirm endpoint error after ${errorTime}ms:`, err.message);
+    console.error("Stack:", err.stack);
     res.status(500).json({
       success: false,
       message: "Server error confirming booking. Please try again.",
-      error: err.message
+      error: err.message,
+      responseTime: `${errorTime}ms`
     });
   }
 });
