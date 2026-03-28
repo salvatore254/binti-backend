@@ -23,8 +23,8 @@ router.post("/calculate", (req, res) => {
       tentConfigs, 
       packageName, 
       packageBasePrice,
-      lighting, transport, pasound, dancefloor, stagepodium, welcomesigns, decor, location, sections,
-      eventDate, setupTime 
+      lighting, transportArrangement, transportVenue, pasound, dancefloor, stagepodium, welcomesigns, decor, location, sections,
+      setupTime 
     } = req.body;
 
     console.log("/calculate endpoint called with location:", location);
@@ -142,15 +142,15 @@ router.post("/calculate", (req, res) => {
     }
 
     // TRANSPORT: Use TransportService for dynamic calculation
-    if (transport === "yes" || transport === true) {
-      if (!location || typeof location !== "string") {
-        return res.status(400).json({ success: false, message: "Location is required to calculate transport cost." });
+    if (transportArrangement === 'arrange' && transportVenue) {
+      if (!transportVenue || typeof transportVenue !== "string") {
+        return res.status(400).json({ success: false, message: "Transport venue is required when transport arrangement is selected." });
       }
 
       try {
-        console.log("🔍 Calculating transport for location:", location);
+        console.log("🔍 Calculating transport for location:", transportVenue);
         
-        const transportCalc = TransportService.calculateTransportCost(location);
+        const transportCalc = TransportService.calculateTransportCost(transportVenue);
         
         console.log("[TRANSPORT] Calculation succeeded:", transportCalc);
 
@@ -165,7 +165,7 @@ router.post("/calculate", (req, res) => {
         console.error("🚨 TransportService crash:", {
           message: transportErr.message,
           stack: transportErr.stack,
-          location: location
+          location: transportVenue
         });
 
         return res.status(500).json({
@@ -173,6 +173,9 @@ router.post("/calculate", (req, res) => {
           message: "Transport calculation failed: " + transportErr.message
         });
       }
+    } else {
+      // No transport arrangement, cost is 0
+      breakdown.transport = { cost: 0, arrangement: 'own' };
     }
 
     // SITE VISIT: Removed - users now request via contact form
@@ -261,9 +264,9 @@ router.post("/confirm", async (req, res) => {
       fullname, phone, email, venue,
       tentConfigs,
       packageName, packageBasePrice,
-      tentType, tentSize, lighting, transport, decor, pasound, dancefloor, stagepodium, welcomesigns,
+      tentType, tentSize, lighting, transportArrangement, transportVenue, decor, pasound, dancefloor, stagepodium, welcomesigns,
       location, sections, termsAccepted, paymentMethod, mpesaPhone,
-      eventDate, setupTime, additionalInfo
+      setupTime, additionalInfo
     } = req.body;
 
     console.log("[CONFIRM] Endpoint called with:", {
@@ -271,12 +274,12 @@ router.post("/confirm", async (req, res) => {
       phone,
       email,
       venue,
-      eventDate,
       setupTime,
       tentType,
       tentSize,
       lighting,
-      transport,
+      transportArrangement,
+      transportVenue,
       decor,
       pasound,
       dancefloor,
@@ -501,6 +504,28 @@ router.post("/confirm", async (req, res) => {
       breakdown.decor = "Upon Inquiry";
     }
 
+    // TRANSPORT: Handle new transport format
+    if (transportArrangement === 'arrange' && transportVenue) {
+      try {
+        const transportCalc = TransportService.calculateTransportCost(transportVenue);
+        total += transportCalc.transportCost;
+        breakdown.transport = {
+          cost: transportCalc.transportCost,
+          zone: transportCalc.zoneName,
+          serviceArea: transportCalc.serviceArea,
+          zoneInfo: transportCalc.zoneInfo
+        };
+      } catch (transportErr) {
+        console.error('[CONFIRM] Transport calculation failed:', transportErr.message);
+        return res.status(500).json({
+          success: false,
+          message: "Transport calculation failed: " + transportErr.message
+        });
+      }
+    } else {
+      breakdown.transport = { cost: 0, arrangement: 'own' };
+    }
+
     // SITE VISIT: Removed - users now request via contact form
     // (No longer calculated in booking price)
 
@@ -518,7 +543,8 @@ router.post("/confirm", async (req, res) => {
       sections,
       aframeSections: sections,
       lighting: lighting === "yes" || lighting === true,
-      transport: transport === "yes" || transport === true,
+      transportArrangement: transportArrangement || 'own',
+      transportVenue: transportVenue || '',
       pasound: pasound === "yes" || pasound === true,
       dancefloor: dancefloor === "yes" || dancefloor === true,
       stagepodium: stagepodium === "yes" || stagepodium === true,
@@ -526,7 +552,6 @@ router.post("/confirm", async (req, res) => {
       decor: decor === "yes" || decor === true,
       venue,
       location,
-      eventDate,
       setupTime,
       packageName,
       packageBasePrice,

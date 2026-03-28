@@ -69,9 +69,14 @@ const bookingSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  transport: {
-    type: Boolean,
-    default: false,
+  transportArrangement: {
+    type: String,
+    enum: ['own', 'arrange'],
+    default: 'own',
+  },
+  transportVenue: {
+    type: String,
+    default: '',
   },
   pasound: {
     type: Boolean,
@@ -106,10 +111,6 @@ const bookingSchema = new mongoose.Schema({
   location: String,
 
   // Event Details
-  eventDate: {
-    type: Date,
-    required: true,
-  },
   setupTime: {
     type: String, // HH:MM format
     required: true,
