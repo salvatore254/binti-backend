@@ -19,15 +19,26 @@ class EmailService {
       console.warn('[EMAIL] EMAIL_PASS:', emailPass ? 'SET' : 'NOT SET');
       console.warn('[EMAIL] Emails will fail to send until credentials are configured in .env');
     }
+
+    // Remove spaces from password if present (common copy-paste issue)
+    const cleanPass = emailPass ? emailPass.replace(/\s/g, '') : '';
     
     this.transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // Use TLS (not SSL) on port 587
       auth: {
         user: emailUser,
-        pass: emailPass,
+        pass: cleanPass, // Remove spaces from app-specific password
       },
+      pool: {
+        maxConnections: 1,
+        maxMessages: 5,
+      },
+      connectionTimeout: 10000, // 10 second timeout
+      socketTimeout: 10000,     // 10 second socket timeout
       tls: {
-        rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false
+        rejectUnauthorized: false // Relaxed for cloud environments like Render
       }
     });
 
@@ -35,6 +46,7 @@ class EmailService {
     console.log('[EMAIL] EmailService initialized');
     console.log('[EMAIL] Sending emails from:', emailUser);
     console.log('[EMAIL] Admin email:', this.adminEmail);
+    console.log('[EMAIL] SMTP Config: host=smtp.gmail.com, port=587, secure=false (TLS)');
   }
 
   /**
