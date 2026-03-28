@@ -551,4 +551,79 @@ router.post("/test/mpesa-stk", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/payments/status/:bookingId
+ * Check payment status for a booking
+ * Returns current booking status: pending, payment_failed, paid, completed
+ * 
+ * Frontend can poll this endpoint after initiating payment to get real-time updates
+ */
+router.get("/status/:bookingId", async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking ID is required"
+      });
+    }
+
+    console.log("[PAYMENT STATUS] Checking status for booking:", bookingId);
+
+    // Query booking from database
+    const booking = await Booking.findById(bookingId);
+    
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+        bookingId
+      });
+    }
+
+    console.log("[PAYMENT STATUS] Booking status:", booking.status);
+
+    // Return booking status
+    const response = {
+      success: true,
+      bookingId,
+      status: booking.status,
+      paymentMethod: booking.paymentMethod,
+      totalAmount: booking.totalAmount,
+      transactionId: booking.transactionId || null,
+      timestamp: new Date().toISOString()
+    };
+
+    // Include failure details if payment failed
+    if (booking.status === 'payment_failed') {
+      response.failureReason = booking.paymentFailureReason;
+      response.failureCode = booking.paymentFailureCode;
+      response.failureExplanation = booking.lastPaymentError;
+      
+      console.log("[PAYMENT STATUS] ❌ Payment failed:", {
+        code: booking.paymentFailureCode,
+        reason: booking.paymentFailureReason,
+        explanation: booking.lastPaymentError
+      });
+    }
+
+    // Include success details if paid
+    if (booking.status === 'paid') {
+      console.log("[PAYMENT STATUS] ✅ Payment successful");
+      response.invoiceSent = booking.invoiceSent;
+      response.invoiceSentAt = booking.invoiceSentAt;
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error("[PAYMENT STATUS] Error checking payment status:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Error checking payment status",
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
