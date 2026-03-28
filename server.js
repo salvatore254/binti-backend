@@ -163,12 +163,12 @@ const initializeServer = async () => {
     
     // Verify SMTP is configured
     const emailUser = process.env.EMAIL_USER;
-    const emailPass = process.env.EMAIL_PASSWORD;
+    const emailPass = process.env.EMAIL_PASS;
     if (emailUser && emailPass) {
       console.log('[EMAIL] SMTP configured - Emails enabled');
     } else {
       console.log('[EMAIL] SMTP not configured - Emails will not be sent');
-      console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASSWORD in .env to enable');
+      console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASS in .env to enable');
     }
 
     // Initialize Invoice Scheduler (runs every 5 minutes to check for pending invoices)
