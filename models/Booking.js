@@ -13,11 +13,12 @@ const { v4: uuidv4 } = require('uuid');
 const tentConfigSchema = new mongoose.Schema({
   tentType: {
     type: String,
-    enum: ['stretch', 'aframe', 'marquee', 'bell', 'cheese', 'b-line', 'bline', 'a-frame'],
+    enum: ['stretch', 'aframe', 'marquee', 'bell', 'cheese', 'b-line', 'bline', 'a-frame', 'highpeak', 'high-peak', 'pergola'],
     default: 'stretch',
   },
   tentSize: String,
   sections: Number, // For a-frame tents
+  config: String, // For b-line (50/100 guests) and highpeak (50/100 seater)
   quantity: {
     type: Number,
     default: 1,

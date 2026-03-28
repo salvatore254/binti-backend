@@ -81,6 +81,20 @@ router.post("/calculate", (req, res) => {
           configCost = 15000;
           tentDetails.push({ type: 'cheese', color: config.color || 'white', cost: configCost });
         }
+        else if (config.type === 'highpeak') {
+          const config_type = config.config || '100'; // default to 100 seater
+          configCost = config_type === '50' ? 5000 : 10000;
+          tentDetails.push({ type: 'highpeak', config: config_type, cost: configCost });
+        }
+        else if (config.type === 'pergola') {
+          configCost = 20000;
+          tentDetails.push({ type: 'pergola', cost: configCost });
+        }
+        else if (config.type === 'bline') {
+          const bline_config = config.config || '100'; // default to 100 guest
+          configCost = bline_config === '50' ? 30000 : 40000;
+          tentDetails.push({ type: 'b-line', config: bline_config, cost: configCost });
+        }
         
         tentTotal += configCost;
       }
@@ -346,12 +360,22 @@ router.post("/confirm", async (req, res) => {
           tentDetails.push({ type: 'a-frame', sections: sectionCount, cost: configCost });
         } 
         else if (config.type === 'bline' || config.type === 'b-line') {
-          configCost = 30000;
-          tentDetails.push({ type: 'b-line', cost: configCost });
+          const bline_config = config.config || '100'; // default to 100 guest
+          configCost = bline_config === '50' ? 30000 : 40000;
+          tentDetails.push({ type: 'b-line', config: bline_config, cost: configCost });
         } 
         else if (config.type === 'cheese') {
           configCost = 15000;
           tentDetails.push({ type: 'cheese', color: config.color || 'white', cost: configCost });
+        }
+        else if (config.type === 'highpeak') {
+          const config_type = config.config || '100'; // default to 100 seater
+          configCost = config_type === '50' ? 5000 : 10000;
+          tentDetails.push({ type: 'highpeak', config: config_type, cost: configCost });
+        }
+        else if (config.type === 'pergola') {
+          configCost = 20000;
+          tentDetails.push({ type: 'pergola', cost: configCost });
         }
         console.log("Tent configuration added:", config);
         tentTotal += configCost;
@@ -395,11 +419,23 @@ router.post("/confirm", async (req, res) => {
         total += tentCost;
         breakdown.tent = { type: "a-frame", sections: sectionCount, cost: tentCost };
       } else if (tentType === "b-line" || tentType === "bline") {
-        const tentCost = 30000;
+        const bline_config = req.body.blineConfig || '100'; // Get config from request
+        const tentCost = bline_config === '50' ? 30000 : 40000;
         total += tentCost;
-        breakdown.tent = { type: "b-line", cost: tentCost };
+        breakdown.tent = { type: "b-line", config: bline_config, cost: tentCost };
       } else if (tentType === "cheese") {
         const tentCost = 15000;
+        total += tentCost;
+        breakdown.tent = { type: "cheese", cost: tentCost };
+      } else if (tentType === "highpeak" || tentType === "high-peak") {
+        const config_type = req.body.highpeakConfig || '100'; // Get config from request
+        const tentCost = config_type === '50' ? 5000 : 10000;
+        total += tentCost;
+        breakdown.tent = { type: "high-peak", config: config_type, cost: tentCost };
+      } else if (tentType === "pergola") {
+        const tentCost = 20000;
+        total += tentCost;
+        breakdown.tent = { type: "pergola", cost: tentCost };
         total += tentCost;
         breakdown.tent = { type: "cheese", cost: tentCost };
       }
