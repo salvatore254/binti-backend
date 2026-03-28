@@ -9,20 +9,32 @@ const nodemailer = require('nodemailer');
 class EmailService {
   constructor() {
     // Initialize transporter with environment variables
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+    
+    // Warn if email credentials are missing
+    if (!emailUser || !emailPass) {
+      console.warn('[EMAIL] ⚠️ WARNING: Email credentials not configured!');
+      console.warn('[EMAIL] EMAIL_USER:', emailUser ? '✓ SET' : '✗ NOT SET');
+      console.warn('[EMAIL] EMAIL_PASS:', emailPass ? '✓ SET' : '✗ NOT SET');
+      console.warn('[EMAIL] Emails will fail to send until credentials are configured in .env');
+    }
+    
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS, // Use EMAIL_PASS from .env
+        user: emailUser,
+        pass: emailPass,
       },
       tls: {
-        // For development/staging environments, disable strict SSL verification
-        // Production should use proper certificates or OAuth2
         rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false
       }
     });
 
-    this.adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER;
+    this.adminEmail = process.env.ADMIN_EMAIL || emailUser;
+    console.log('[EMAIL] ✅ EmailService initialized');
+    console.log('[EMAIL] Sending emails from:', emailUser);
+    console.log('[EMAIL] Admin email:', this.adminEmail);
   }
 
   /**
@@ -30,6 +42,10 @@ class EmailService {
    */
   async sendBookingConfirmation(booking) {
     try {
+      if (!booking.email) {
+        throw new Error('No email address provided in booking');
+      }
+      
       const depositAmount = Math.round(booking.totalAmount * 0.8);
       const remainingAmount = booking.totalAmount - depositAmount;
 
@@ -64,10 +80,12 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(' Booking confirmation sent to:', booking.email, '(Message ID:', info.messageId, ')');
+      console.log('[EMAIL] ✅ Booking confirmation sent to:', booking.email, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error(' Error sending booking confirmation email:', err.message);
+      console.error('[EMAIL] ❌ Error sending booking confirmation:', err.message);
+      console.error('[EMAIL] Error code:', err.code);
+      console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
     }
   }
@@ -81,6 +99,10 @@ Binti Events Team
       const totalAmount = booking.totalAmount || 0;
       const deposit = depositAmount || (Math.round(totalAmount * 0.8));
       const remaining = totalAmount - deposit;
+      
+      if (!this.adminEmail) {
+        throw new Error('Admin email not configured (ADMIN_EMAIL environment variable)');
+      }
       
       const mailOptions = {
         from: `"Binti Events System" <${process.env.EMAIL_USER}>`,
@@ -109,10 +131,12 @@ Status: Awaiting Payment
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(' Admin notification sent (Message ID:', info.messageId, ')');
+      console.log('[EMAIL] ✅ Admin notification sent to:', this.adminEmail, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error(' Error sending admin notification:', err.message);
+      console.error('[EMAIL] ❌ Error sending admin notification:', err.message);
+      console.error('[EMAIL] Error code:', err.code);
+      console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
     }
   }
@@ -160,6 +184,10 @@ ${message}
    */
   async sendPaymentConfirmation(booking, transactionId) {
     try {
+      if (!booking.email) {
+        throw new Error('No email address provided in booking');
+      }
+      
       const totalAmount = booking.totalAmount || 0;
       const depositAmount = Math.round(totalAmount * 0.8);
       const remainingAmount = totalAmount - depositAmount;
@@ -192,10 +220,12 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(' Payment confirmation sent to:', booking.email, '(Message ID:', info.messageId, ')');
+      console.log('[EMAIL] ✅ Payment confirmation sent to:', booking.email, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error(' Error sending payment confirmation:', err.message);
+      console.error('[EMAIL] ❌ Error sending payment confirmation:', err.message);
+      console.error('[EMAIL] Error code:', err.code);
+      console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
     }
   }
@@ -206,6 +236,13 @@ Binti Events Team
    */
   async sendEmailWithAttachment(options) {
     try {
+      if (!options.to) {
+        throw new Error('Email recipient (to) not provided');
+      }
+      if (!options.subject) {
+        throw new Error('Email subject not provided');
+      }
+      
       const mailOptions = {
         from: `"Binti Events" <${process.env.EMAIL_USER}>`,
         to: options.to,
@@ -215,10 +252,12 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EMAIL] Email with attachment sent to:', options.to, '(Message ID:', info.messageId, ')');
+      console.log('[EMAIL] ✅ Email with attachment sent to:', options.to, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('[EMAIL] Error sending email with attachment:', err.message);
+      console.error('[EMAIL] ❌ Error sending email with attachment:', err.message);
+      console.error('[EMAIL] Error code:', err.code);
+      console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
     }
   }
@@ -229,6 +268,13 @@ Binti Events Team
    */
   async sendEmailWithHTML(options) {
     try {
+      if (!options.to) {
+        throw new Error('Email recipient (to) not provided');
+      }
+      if (!options.subject) {
+        throw new Error('Email subject not provided');
+      }
+      
       const mailOptions = {
         from: `"Binti Events" <${process.env.EMAIL_USER}>`,
         to: options.to,
@@ -237,10 +283,12 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EMAIL] HTML email sent to:', options.to, '(Message ID:', info.messageId, ')');
+      console.log('[EMAIL] ✅ HTML email sent to:', options.to, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('[EMAIL] Error sending HTML email:', err.message);
+      console.error('[EMAIL] ❌ Error sending HTML email:', err.message);
+      console.error('[EMAIL] Error code:', err.code);
+      console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
     }
   }
