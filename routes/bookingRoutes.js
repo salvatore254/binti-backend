@@ -636,6 +636,57 @@ router.post("/confirm", async (req, res) => {
 });
 
 /**
+ * GET /api/bookings/payment-status/:bookingId
+ * Fetch payment status of a booking
+ * Used by frontend to poll for payment confirmation after STK/Pesapal initiated
+ */
+router.get("/payment-status/:bookingId", async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { bookingId } = req.params;
+
+    if (!bookingId) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking ID is required"
+      });
+    }
+
+    // Fetch booking by ID
+    const booking = await Booking.findById(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+        status: 'not_found'
+      });
+    }
+
+    // Return payment status
+    const queryTime = Date.now() - startTime;
+    return res.status(200).json({
+      success: true,
+      status: booking.status, // 'pending', 'paid', 'payment_failed', 'completed', 'cancelled'
+      bookingId: booking._id,
+      paymentMethod: booking.paymentMethod,
+      transactionId: booking.transactionId,
+      responseTime: `${queryTime}ms`
+    });
+
+  } catch (err) {
+    const errorTime = Date.now() - startTime;
+    console.error("[PAYMENT-STATUS ERROR]", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching payment status",
+      error: err.message,
+      responseTime: `${errorTime}ms`
+    });
+  }
+});
+
+/**
  * GET /api/bookings/pesapal-iframe
  * Fetch booking data and initialize Pesapal payment
  * Returns the Pesapal iframe URL for displaying the payment form
