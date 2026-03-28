@@ -5,77 +5,77 @@
  * Also handles outside Nairobi locations with separate pricing tiers based on distance
  */
 
-// Nairobi zones and their transport costs (KES)
+// Nairobi zones and their transport costs (KES) - DOUBLED FOR ROUND-TRIP
 const NAIROBI_ZONES = {
   'cbd': {
     name: 'CBD/Central',
-    cost: 2500,
+    cost: 5000,
     areas: ['cbd', 'central business district', 'city center', 'downtown'],
     coordinates: { minLat: -1.295, maxLat: -1.280, minLng: 36.805, maxLng: 36.825 }
   },
   'westlands': {
     name: 'Westlands',
-    cost: 3000,
+    cost: 6000,
     areas: ['westlands', 'nairobi west', 'upper hill', 'kilimani'],
     coordinates: { minLat: -1.290, maxLat: -1.310, minLng: 36.790, maxLng: 36.810 }
   },
   'karen': {
     name: 'Karen/Langata',
-    cost: 3000,
+    cost: 6000,
     areas: ['karen', 'langata', 'south c', 'south b', 'ngong'],
     coordinates: { minLat: -1.330, maxLat: -1.380, minLng: 36.760, maxLng: 36.820 }
   },
   'kilimani': {
     name: 'Kilimani/Hurlingham',
-    cost: 3500,
+    cost: 7000,
     areas: ['kilimani', 'hurlingham', 'lavington', 'muthaiga'],
     coordinates: { minLat: -1.285, maxLat: -1.310, minLng: 36.795, maxLng: 36.825 }
   },
   'southlands': {
     name: 'Southlands',
-    cost: 3000,
+    cost: 6000,
     areas: ['southlands', 'spring valley', 'nyari', 'kitisuru', 'forest edge'],
     coordinates: { minLat: -1.300, maxLat: -1.330, minLng: 36.780, maxLng: 36.810 }
   },
   'eastlands': {
     name: 'Eastlands/Industrial',
-    cost: 3500,
+    cost: 7000,
     areas: ['eastlands', 'industrial area', 'juja road', 'mlolongo', 'embakasi'],
     coordinates: { minLat: -1.295, maxLat: -1.340, minLng: 36.825, maxLng: 36.880 }
   },
   'northlands': {
     name: 'Northlands/Parklands',
-    cost: 3000,
+    cost: 6000,
     areas: ['northlands', 'parklands', 'karura', 'ridgeways', 'gigiri', 'runda'],
     coordinates: { minLat: -1.270, maxLat: -1.295, minLng: 36.800, maxLng: 36.850 }
   },
   'kasarani': {
     name: 'Kasarani/Mirema',
-    cost: 3500,
+    cost: 7000,
     areas: ['kasarani', 'mirema', 'savannah', 'high rise'],
     coordinates: { minLat: -1.260, maxLat: -1.285, minLng: 36.850, maxLng: 36.890 }
   },
   'embakasi': {
     name: 'Embakasi',
-    cost: 3500,
+    cost: 7000,
     areas: ['embakasi', 'nairobi airport', 'airport', 'pipelines', 'radiation'],
     coordinates: { minLat: -1.310, maxLat: -1.360, minLng: 36.880, maxLng: 36.950 }
   },
   'nairobi_west': {
     name: 'Nairobi West',
-    cost: 2500,
+    cost: 5000,
     areas: ['nairobi west', 'wood avenue', 'bomas', 'nyayo estate'],
     coordinates: { minLat: -1.315, maxLat: -1.340, minLng: 36.760, maxLng: 36.790 }
   },
   'outer_south': {
     name: 'Outer South',
-    cost: 3000,
+    cost: 6000,
     areas: ['otiende', 'kangemi', 'riruta', 'soweto', 'kikuyu'],
     coordinates: { minLat: -1.340, maxLat: -1.400, minLng: 36.700, maxLng: 36.820 }
   },
   'outer_north': {
     name: 'Outer North',
-    cost: 3500,
+    cost: 7000,
     areas: ['karen', 'thika', 'ruai', 'kahawa', 'kenyatta', 'kariobangi'],
     coordinates: { minLat: -1.235, maxLat: -1.260, minLng: 36.800, maxLng: 36.900 }
   }
