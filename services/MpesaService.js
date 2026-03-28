@@ -21,7 +21,7 @@ class MpesaService {
     if (!this.passkey) missingCredentials.push('MPESA_PASSKEY');
     
     if (missingCredentials.length > 0) {
-      console.warn(`[MPESA] ⚠️ WARNING: Missing credentials in .env file: ${missingCredentials.join(', ')}`);
+      console.warn(`[MPESA] WARNING: Missing credentials in .env file: ${missingCredentials.join(', ')}`);
       console.warn(`[MPESA] M-Pesa STK push will fail until these are configured.`);
     }
     
@@ -72,13 +72,13 @@ class MpesaService {
         this.accessToken = response.data.access_token;
         // Token expires in 3600 seconds; cache for 59 minutes (3540 seconds)
         this.tokenExpiry = Date.now() + (3540 * 1000);
-        console.log('[MPESA] ✅ Access token obtained successfully');
+        console.log('[MPESA] Access token obtained successfully');
         return this.accessToken;
       } else {
         throw new Error('No access token in response');
       }
     } catch (error) {
-      console.error('[MPESA] ❌ Failed to get access token:', error.message);
+      console.error('[MPESA] Failed to get access token:', error.message);
       console.error('[MPESA] OAuth URL being used:', this.oauthUrl);
       
       if (error.response?.status) {
@@ -172,7 +172,7 @@ class MpesaService {
         timeout: 15000
       });
 
-      console.log('[MPESA] ✅ STK push initiated successfully');
+      console.log('[MPESA] STK push initiated successfully');
       console.log('[MPESA] Response status:', response.status);
       console.log('[MPESA] Response data:', JSON.stringify(response.data, null, 2));
 
@@ -182,7 +182,7 @@ class MpesaService {
       
       // Check if ResponseCode indicates success (0 is success, others are error codes)
       if (responseData.ResponseCode === '0' || responseData.ResponseCode === 0) {
-        console.log('[MPESA] ✅ STK push REQUEST accepted by Safaricom');
+        console.log('[MPESA] STK push REQUEST accepted by Safaricom');
         return {
           success: true,
           checkoutRequestId: responseData.CheckoutRequestID,
@@ -193,12 +193,12 @@ class MpesaService {
         };
       } else {
         // Non-zero response code means error
-        console.error('[MPESA] ⚠️ STK push returned error code:', responseData.ResponseCode);
+        console.error('[MPESA] STK push returned error code:', responseData.ResponseCode);
         console.error('[MPESA] Error description:', responseData.ResponseDescription);
         throw new Error(`STK push failed with code ${responseData.ResponseCode}: ${responseData.ResponseDescription}`);
       }
     } catch (error) {
-      console.error('[MPESA] ❌ STK push failed:', error.message);
+      console.error('[MPESA] STK push failed:', error.message);
       console.error('[MPESA] Error details:', {
         message: error.message,
         code: error.code,

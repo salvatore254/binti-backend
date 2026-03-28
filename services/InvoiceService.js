@@ -338,7 +338,7 @@ class InvoiceService {
             <div class="invoice-details">
               <p><strong>Invoice No:</strong> ${booking._id.substring(0, 8).toUpperCase()}</p>
               <p><strong>Issue date:</strong> ${invoiceDate}</p>
-              <p><strong>Payment Status:</strong> <span style="color: #4caf50; font-weight: bold;">PAID ✓</span></p>
+              <p><strong>Payment Status:</strong> <span style="color: #4caf50; font-weight: bold;">PAID</span></p>
             </div>
           </div>
 
@@ -361,7 +361,7 @@ class InvoiceService {
 
           <!-- Payment Status Badge -->
           <div class="payment-status">
-            ✓ PAYMENT CONFIRMED - Transaction ID: ${booking.transactionId}
+            PAYMENT CONFIRMED - Transaction ID: ${booking.transactionId}
           </div>
 
           <!-- Items Table -->
@@ -634,7 +634,7 @@ class InvoiceService {
         }]
       });
 
-      console.log(`[INVOICE] ✅ PDF Invoice sent successfully to ${booking.email}`);
+      console.log(`[INVOICE] PDF Invoice sent successfully to ${booking.email}`);
       return true;
     } catch (error) {
       console.error('[INVOICE] Failed to send invoice:', error.message);

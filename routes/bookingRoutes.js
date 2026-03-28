@@ -6,7 +6,7 @@ const Booking = require("../models/Booking");
 const { v4: uuidv4 } = require("uuid");
 
 // DIAGNOSTIC: Log that routes file loaded successfully
-console.log("✅ bookingRoutes.js loaded successfully");
+console.log("[BOOKING] Routes loaded successfully");
 
 // Note: EmailService is only imported when confirm endpoint is called (lazy load)
 
@@ -138,7 +138,7 @@ router.post("/calculate", (req, res) => {
         
         const transportCalc = TransportService.calculateTransportCost(location);
         
-        console.log("✅ Transport calculation succeeded:", transportCalc);
+        console.log("[TRANSPORT] Calculation succeeded:", transportCalc);
 
         total += transportCalc.transportCost;
         breakdown.transport = {
@@ -166,7 +166,7 @@ router.post("/calculate", (req, res) => {
 
     res.json({ success: true, total, breakdown });
   } catch (err) {
-    console.error("❌ CALCULATE ERROR:", {
+    console.error("[CALCULATE] ERROR:", {
       message: err.message,
       stack: err.stack,
       location: req.body.location,
@@ -252,7 +252,7 @@ router.post("/confirm", async (req, res) => {
       eventDate, setupTime, additionalInfo
     } = req.body;
 
-    console.log("✅ /confirm endpoint called with:", {
+    console.log("[CONFIRM] Endpoint called with:", {
       fullname,
       phone,
       email,
@@ -508,7 +508,7 @@ router.post("/confirm", async (req, res) => {
     // Return booking confirmation BEFORE saving to database (non-blocking)
     // This ensures quick frontend response (< 1 second)
     const responseTime = Date.now() - startTime;
-    console.log(`⏱️  /confirm endpoint responding (took ${responseTime}ms)`);
+    console.log(`[CONFIRM] Responding (took ${responseTime}ms)`);
     
     res.json({
       success: true,
@@ -526,9 +526,9 @@ router.post("/confirm", async (req, res) => {
     (async () => {
       try {
         await booking.save();
-        console.log(`✅ Booking saved to database with ID: ${bookingId}`);
+        console.log(`[BOOKING] Saved to database with ID: ${bookingId}`);
       } catch (dbErr) {
-        console.error('❌ Failed to save booking to database:', dbErr.message);
+        console.error('[BOOKING] Failed to save to database:', dbErr.message);
       }
     })();
 
@@ -539,17 +539,17 @@ router.post("/confirm", async (req, res) => {
         const emailService = EmailService();
         const customerEmailResult = await emailService.sendBookingConfirmation(booking);
         const adminEmailResult = await emailService.sendAdminNotification(booking, booking.depositAmount);
-        console.log(`   ✅ Customer email sent to ${booking.email}`);
-        console.log(`   ✅ Admin email sent to ${process.env.ADMIN_EMAIL}`);
+        console.log(`[EMAIL] Customer confirmation sent to ${booking.email}`);
+        console.log(`[EMAIL] Admin notification sent to ${process.env.ADMIN_EMAIL}`);
       } catch (emailErr) {
-        console.warn('⚠️ Email service unavailable:', emailErr.message);
+        console.warn('[EMAIL] Service unavailable:', emailErr.message);
         console.warn('Booking was created successfully but confirmation emails could not be sent.');
       }
     })();
 
   } catch (err) {
     const errorTime = Date.now() - startTime;
-    console.error(`❌ /confirm endpoint error after ${errorTime}ms:`, err.message);
+    console.error(`[CONFIRM] Error after ${errorTime}ms:`, err.message);
     console.error("Stack:", err.stack);
     res.status(500).json({
       success: false,

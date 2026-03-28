@@ -119,7 +119,7 @@ const mpesaCallback = async (req, res, next) => {
       );
 
       if (booking) {
-        logger.info(`✅ Booking ${booking._id} updated to paid status via M-Pesa`);
+        logger.info(`Booking ${booking._id} updated to paid status via M-Pesa`);
         
         // Send invoice asynchronously
         const invoiceService = new InvoiceService();
@@ -127,7 +127,7 @@ const mpesaCallback = async (req, res, next) => {
           logger.error(`Failed to send invoice for booking ${booking._id}: ${err.message}`);
         });
       } else {
-        logger.warn(`⚠️ No booking found for M-Pesa phone: ${phone}`);
+        logger.warn(`No booking found for M-Pesa phone: ${phone}`);
       }
     } else {
       logger.warn(`M-Pesa Payment Failed: ${ResultDesc}`);
@@ -166,7 +166,7 @@ const pesapalCallback = async (req, res, next) => {
       );
 
       if (booking) {
-        logger.info(`✅ Booking ${booking._id} updated to paid status via Pesapal`);
+        logger.info(`Booking ${booking._id} updated to paid status via Pesapal`);
         
         // Send invoice asynchronously
         const invoiceService = new InvoiceService();
@@ -174,7 +174,7 @@ const pesapalCallback = async (req, res, next) => {
           logger.error(`Failed to send invoice for booking ${booking._id}: ${err.message}`);
         });
       } else {
-        logger.warn(`⚠️ No booking found with ID: ${order_tracking_id}`);
+        logger.warn(`No booking found with ID: ${order_tracking_id}`);
       }
     } else {
       logger.warn('Pesapal callback missing transaction ID');

@@ -339,7 +339,7 @@ router.post("/mpesa-callback", async (req, res) => {
 
     // Handle successful payment (resultCode 0 = success)
     if (callbackData.resultCode === 0) {
-      console.log("[MPESA CALLBACK] ✅ Payment successful!");
+      console.log("[MPESA CALLBACK] Payment successful!");
       console.log("[MPESA CALLBACK] Receipt:", callbackData.mpesaReceiptNumber);
       console.log("[MPESA CALLBACK] Amount:", callbackData.amount);
       console.log("[MPESA CALLBACK] Phone:", callbackData.phoneNumber);
@@ -368,9 +368,9 @@ router.post("/mpesa-callback", async (req, res) => {
           
           // Call controller function to update database
           await mpesaCallback(mockReq, mockRes);
-          console.log("[MPESA CALLBACK] ✅ Database updated via controller");
+          console.log("[MPESA CALLBACK] Database updated via controller");
         } catch (dbError) {
-          console.error("[MPESA CALLBACK] ❌ Error updating database:", dbError.message);
+          console.error("[MPESA CALLBACK] Error updating database:", dbError.message);
         }
         
         // Send confirmation email
@@ -380,28 +380,28 @@ router.post("/mpesa-callback", async (req, res) => {
           const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, callbackData.mpesaReceiptNumber);
           
           if (emailResult.success) {
-            console.log("[MPESA CALLBACK] ✉️ Confirmation email sent successfully (ID:", emailResult.messageId, ")");
+            console.log("[MPESA CALLBACK] Confirmation email sent successfully (ID:", emailResult.messageId, ")");
           } else {
-            console.warn("[MPESA CALLBACK] ⚠️ Email sending failed:", emailResult.error);
+            console.warn("[MPESA CALLBACK] Email sending failed:", emailResult.error);
           }
         } catch (emailError) {
-          console.error("[MPESA CALLBACK] ❌ Error sending confirmation email:", emailError.message);
+          console.error("[MPESA CALLBACK] Error sending confirmation email:", emailError.message);
         }
         
         // Remove from cache after processing
         delete bookingCache[callbackData.accountRef];
         console.log("[MPESA CALLBACK] Booking data cleared from cache");
       } else {
-        console.warn("[MPESA CALLBACK] ⚠️ No cached booking found for", callbackData.accountRef);
+        console.warn("[MPESA CALLBACK] No cached booking found for", callbackData.accountRef);
         console.warn("[MPESA CALLBACK] Available cache keys:", Object.keys(bookingCache));
       }
       
     } else {
       // Payment failed or was cancelled
-      console.log("[MPESA CALLBACK] ❌ Payment failed or cancelled");
+      console.log("[MPESA CALLBACK] Payment failed or cancelled");
       console.log("[MPESA CALLBACK] ResultCode:", callbackData.resultCode);
       console.log("[MPESA CALLBACK] ResultDesc:", callbackData.resultDesc);
-      console.log("[MPESA CALLBACK] ℹ️  Explanation:", callbackData.resultCodeDescription);
+      console.log("[MPESA CALLBACK] Explanation:", callbackData.resultCodeDescription);
       
       // Update booking status to reflect payment failure
       try {
@@ -418,12 +418,12 @@ router.post("/mpesa-callback", async (req, res) => {
         );
         
         if (booking) {
-          console.log("[MPESA CALLBACK] ✅ Booking status updated to 'payment_failed'");
+          console.log("[MPESA CALLBACK] Booking status updated to 'payment_failed'");
         } else {
-          console.warn("[MPESA CALLBACK] ⚠️ Booking not found for:", callbackData.accountRef);
+          console.warn("[MPESA CALLBACK] Booking not found for:", callbackData.accountRef);
         }
       } catch (dbError) {
-        console.error("[MPESA CALLBACK] ❌ Error updating booking status:", dbError.message);
+        console.error("[MPESA CALLBACK] Error updating booking status:", dbError.message);
       }
       
       // Remove from cache after processing
@@ -463,7 +463,7 @@ router.get("/test/mpesa-auth", async (req, res) => {
     
     return res.json({
       success: true,
-      message: "✅ M-Pesa OAuth authentication successful!",
+      message: "M-Pesa OAuth authentication successful!",
       token: token.substring(0, 20) + "...[TRUNCATED]",
       mode: process.env.MPESA_USE_SANDBOX === 'true' ? 'SANDBOX' : 'PRODUCTION',
       timestamp: new Date().toISOString(),
@@ -473,7 +473,7 @@ router.get("/test/mpesa-auth", async (req, res) => {
     console.error("[TEST] M-Pesa OAuth Test failed:", error.message);
     return res.status(500).json({
       success: false,
-      message: "❌ M-Pesa OAuth authentication failed",
+      message: "M-Pesa OAuth authentication failed",
       error: error.message,
       debugging: {
         mode: process.env.MPESA_USE_SANDBOX === 'true' ? 'SANDBOX' : 'PRODUCTION',
@@ -519,7 +519,7 @@ router.post("/test/mpesa-stk", async (req, res) => {
 
     return res.json({
       success: true,
-      message: "✅ STK push initiated successfully! Check your phone for the prompt.",
+      message: "STK push initiated successfully! Check your phone for the prompt.",
       mode: process.env.MPESA_USE_SANDBOX === 'true' ? 'SANDBOX' : 'PRODUCTION',
       response: {
         checkoutRequestId: result.checkoutRequestId,
@@ -535,7 +535,7 @@ router.post("/test/mpesa-stk", async (req, res) => {
     console.error("[TEST] M-Pesa STK Test failed:", error.message);
     return res.status(500).json({
       success: false,
-      message: "❌ STK push test failed",
+      message: "STK push test failed",
       error: error.message,
       debugging: {
         timestamp: new Date().toISOString(),
@@ -601,7 +601,7 @@ router.get("/status/:bookingId", async (req, res) => {
       response.failureCode = booking.paymentFailureCode;
       response.failureExplanation = booking.lastPaymentError;
       
-      console.log("[PAYMENT STATUS] ❌ Payment failed:", {
+      console.log("[PAYMENT STATUS] Payment failed:", {
         code: booking.paymentFailureCode,
         reason: booking.paymentFailureReason,
         explanation: booking.lastPaymentError
@@ -610,7 +610,7 @@ router.get("/status/:bookingId", async (req, res) => {
 
     // Include success details if paid
     if (booking.status === 'paid') {
-      console.log("[PAYMENT STATUS] ✅ Payment successful");
+      console.log("[PAYMENT STATUS] Payment successful");
       response.invoiceSent = booking.invoiceSent;
       response.invoiceSentAt = booking.invoiceSentAt;
     }

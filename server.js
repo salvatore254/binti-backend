@@ -175,9 +175,9 @@ const initializeServer = async () => {
     try {
       const invoiceScheduler = new InvoiceScheduler();
       invoiceScheduler.start(Booking, 300); // Check every 5 minutes (300 seconds)
-      console.log('[INVOICE SCHEDULER] ✅ Invoice scheduler started');
+      console.log('[INVOICE SCHEDULER] Invoice scheduler started');
     } catch (schedulerErr) {
-      console.warn('[INVOICE SCHEDULER] ⚠️ Failed to start scheduler:', schedulerErr.message);
+      console.warn('[INVOICE SCHEDULER] Failed to start scheduler:', schedulerErr.message);
       logger.warn('Invoice scheduler initialization failed: ' + schedulerErr.message);
       // Continue anyway - invoices will still be sent on payment callback
     }

@@ -14,9 +14,9 @@ class EmailService {
     
     // Warn if email credentials are missing
     if (!emailUser || !emailPass) {
-      console.warn('[EMAIL] ⚠️ WARNING: Email credentials not configured!');
-      console.warn('[EMAIL] EMAIL_USER:', emailUser ? '✓ SET' : '✗ NOT SET');
-      console.warn('[EMAIL] EMAIL_PASS:', emailPass ? '✓ SET' : '✗ NOT SET');
+      console.warn('[EMAIL] WARNING: Email credentials not configured!');
+      console.warn('[EMAIL] EMAIL_USER:', emailUser ? 'SET' : 'NOT SET');
+      console.warn('[EMAIL] EMAIL_PASS:', emailPass ? 'SET' : 'NOT SET');
       console.warn('[EMAIL] Emails will fail to send until credentials are configured in .env');
     }
     
@@ -32,7 +32,7 @@ class EmailService {
     });
 
     this.adminEmail = process.env.ADMIN_EMAIL || emailUser;
-    console.log('[EMAIL] ✅ EmailService initialized');
+    console.log('[EMAIL] EmailService initialized');
     console.log('[EMAIL] Sending emails from:', emailUser);
     console.log('[EMAIL] Admin email:', this.adminEmail);
   }
@@ -80,10 +80,10 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EMAIL] ✅ Booking confirmation sent to:', booking.email, '(ID:', info.messageId, ')');
+      console.log('[EMAIL] Booking confirmation sent to:', booking.email, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('[EMAIL] ❌ Error sending booking confirmation:', err.message);
+      console.error('[EMAIL] Error sending booking confirmation:', err.message);
       console.error('[EMAIL] Error code:', err.code);
       console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
@@ -131,10 +131,10 @@ Status: Awaiting Payment
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EMAIL] ✅ Admin notification sent to:', this.adminEmail, '(ID:', info.messageId, ')');
+      console.log('[EMAIL] Admin notification sent to:', this.adminEmail, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('[EMAIL] ❌ Error sending admin notification:', err.message);
+      console.error('[EMAIL] Error sending admin notification:', err.message);
       console.error('[EMAIL] Error code:', err.code);
       console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
@@ -220,10 +220,10 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EMAIL] ✅ Payment confirmation sent to:', booking.email, '(ID:', info.messageId, ')');
+      console.log('[EMAIL] Payment confirmation sent to:', booking.email, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('[EMAIL] ❌ Error sending payment confirmation:', err.message);
+      console.error('[EMAIL] Error sending payment confirmation:', err.message);
       console.error('[EMAIL] Error code:', err.code);
       console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
@@ -252,10 +252,10 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EMAIL] ✅ Email with attachment sent to:', options.to, '(ID:', info.messageId, ')');
+      console.log('[EMAIL] Email with attachment sent to:', options.to, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('[EMAIL] ❌ Error sending email with attachment:', err.message);
+      console.error('[EMAIL] Error sending email with attachment:', err.message);
       console.error('[EMAIL] Error code:', err.code);
       console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
@@ -283,10 +283,10 @@ Binti Events Team
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log('[EMAIL] ✅ HTML email sent to:', options.to, '(ID:', info.messageId, ')');
+      console.log('[EMAIL] HTML email sent to:', options.to, '(ID:', info.messageId, ')');
       return { success: true, messageId: info.messageId };
     } catch (err) {
-      console.error('[EMAIL] ❌ Error sending HTML email:', err.message);
+      console.error('[EMAIL] Error sending HTML email:', err.message);
       console.error('[EMAIL] Error code:', err.code);
       console.error('[EMAIL] Full error:', err);
       return { success: false, error: err.message };
