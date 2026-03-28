@@ -439,8 +439,6 @@ router.post("/confirm", async (req, res) => {
         const tentCost = 20000;
         total += tentCost;
         breakdown.tent = { type: "pergola", cost: tentCost };
-        total += tentCost;
-        breakdown.tent = { type: "cheese", cost: tentCost };
       }
     } 
     // Package only
@@ -572,13 +570,17 @@ router.post("/confirm", async (req, res) => {
     const responseTime = Date.now() - startTime;
     console.log(`[CONFIRM] Responding (took ${responseTime}ms)`);
     
+    // Calculate deposit and remaining amounts (before save) for response
+    const depositAmount = Math.round(total * 0.8);
+    const remainingAmount = Math.round(total * 0.2);
+    
     res.json({
       success: true,
       message: "Booking processing started. Confirmation will be sent to your email.",
       bookingId: booking._id || bookingId,
       booking: booking.toJSON(),
-      depositAmount: booking.depositAmount,
-      remainingAmount: booking.remainingAmount,
+      depositAmount: depositAmount,
+      remainingAmount: remainingAmount,
       status: "processing",
       responseTime: `${responseTime}ms`
     });
