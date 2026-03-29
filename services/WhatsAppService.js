@@ -10,8 +10,8 @@ const logger = require('../utils/logger');
 class WhatsAppService {
   constructor() {
     this.apiKey = process.env.AFRICAS_TALKING_API_KEY;
-    this.userName = process.env.AFRICAS_TALKING_USERNAME || 'sandbox'; // 'sandbox' for testing, actual username for production
-    this.baseUrl = 'https://api.sandbox.africastalking.com/version1/messaging'; // Use sandbox for testing
+    this.userName = process.env.AFRICAS_TALKING_USERNAME || 'Binti_Events';
+    this.baseUrl = 'https://api.africastalking.com/version1/messaging';
     this.adminPhone = process.env.ADMIN_WHATSAPP_PHONE; // Format: +254746170866
   }
 
@@ -122,18 +122,18 @@ class WhatsAppService {
       day: 'numeric',
     });
 
-    let summary = `📋 *Booking Confirmation*\n\n`;
+    let summary = ` *Booking Confirmation*\n\n`;
     summary += `*Booking ID:* ${booking.id.substring(0, 8).toUpperCase()}\n`;
     summary += `*Name:* ${booking.fullname}\n`;
     summary += `*Phone:* ${booking.phone}\n`;
     summary += `*Email:* ${booking.email}\n\n`;
 
-    summary += `📍 *Event Details*\n`;
+    summary += ` *Event Details*\n`;
     summary += `*Venue:* ${booking.venue}\n`;
     summary += `*Date:* ${eventDate}\n`;
     summary += `*Setup Time:* ${booking.setupTime}\n\n`;
 
-    summary += `⛺ *Tent Selection*\n`;
+    summary += ` *Tent Selection*\n`;
     if (booking.tentConfigs && booking.tentConfigs.length > 0) {
       booking.tentConfigs.forEach((tent, idx) => {
         summary += `${idx + 1}. ${this.getTentDisplay(tent)}\n`;
@@ -146,7 +146,7 @@ class WhatsAppService {
     }
     summary += `\n`;
 
-    summary += `🎁 *Add-ons*\n`;
+    summary += ` *Add-ons*\n`;
     const addOns = [];
     if (booking.lighting) addOns.push('Ambient Lighting');
     if (booking.transport) addOns.push('Transport');
@@ -163,11 +163,11 @@ class WhatsAppService {
     }
     summary += `\n\n`;
 
-    summary += `💰 *Total Amount:* KES ${booking.totalAmount.toLocaleString()}\n`;
+    summary += ` *Total Amount:* KES ${booking.totalAmount.toLocaleString()}\n`;
     summary += `*Payment Status:* PAID ✓\n\n`;
 
     if (booking.additionalInfo) {
-      summary += `📝 *Special Requests:*\n${booking.additionalInfo}\n\n`;
+      summary += ` *Special Requests:*\n${booking.additionalInfo}\n\n`;
     }
 
     summary += `For invoice or further details, check your email.\n`;
@@ -189,7 +189,7 @@ class WhatsAppService {
       day: 'numeric',
     });
 
-    let alert = `🔔 *NEW PAID BOOKING*\n\n`;
+    let alert = ` *NEW PAID BOOKING*\n\n`;
     alert += `*Booking ID:* ${booking.id.substring(0, 8).toUpperCase()}\n`;
     alert += `*Customer:* ${booking.fullname}\n`;
     alert += `*Phone:* ${booking.phone}\n`;
@@ -200,7 +200,7 @@ class WhatsAppService {
     alert += `*Date:* ${eventDate}\n`;
     alert += `*Time:* ${booking.setupTime}\n\n`;
 
-    alert += `⛺ *Tent Selection*\n`;
+    alert += ` *Tent Selection*\n`;
     if (booking.tentConfigs && booking.tentConfigs.length > 0) {
       booking.tentConfigs.forEach((tent, idx) => {
         alert += `${idx + 1}. ${this.getTentDisplay(tent)}\n`;
@@ -208,7 +208,7 @@ class WhatsAppService {
     }
     alert += `\n`;
 
-    alert += `💰 *Amount:* KES ${booking.totalAmount.toLocaleString()}\n`;
+    alert += ` *Amount:* KES ${booking.totalAmount.toLocaleString()}\n`;
     alert += `*Payment Method:* ${booking.paymentMethod || 'M-Pesa'}\n`;
     alert += `*Transaction ID:* ${booking.transactionId || 'N/A'}\n\n`;
 
