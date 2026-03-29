@@ -15,7 +15,7 @@ class EmailService {
       console.warn('[EMAIL] Emails will fail to send until RESEND_API_KEY is set in .env');
     }
 
-    this.resend = new Resend(resendApiKey);
+    this.resend = resendApiKey ? new Resend(resendApiKey) : null;
     // Use verified domain sender, or Resend's test address
     this.fromAddress = process.env.EMAIL_FROM || 'Binti Events <onboarding@resend.dev>';
     this.adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER || 'silvanootieno44@gmail.com';
@@ -29,6 +29,10 @@ class EmailService {
    * Send email via Resend
    */
   async _send({ to, subject, html, text, attachments }) {
+    if (!this.resend) {
+      throw new Error('RESEND_API_KEY not configured');
+    }
+
     const payload = {
       from: this.fromAddress,
       to: Array.isArray(to) ? to : [to],

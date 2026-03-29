@@ -1,184 +1,291 @@
 /**
  * Invoice Service
  * Generates and sends invoices after payment confirmation
- * Based on the Binti Events invoice template/quote format
- * Sends invoice as a styled HTML email (no Puppeteer required)
+ * Matches the exact Binti Events quote PDF format (Screenshot.png)
+ * Uses jsPDF for lightweight PDF generation (no Puppeteer)
  */
 
 const EmailService = require('./EmailService');
 const logger = require('../utils/logger');
+const { jsPDF } = require('jspdf');
 
 class InvoiceService {
   constructor() {
     this.emailService = EmailService();
     this.companyInfo = {
       name: 'Binti Events',
-      address: 'Nairobi, Kenya',
-      phone: '+254702424242',
+      address: 'Karen',
+      city: 'Nairobi',
+      country: 'Kenya',
+      phone: '0728307327',
       email: 'bintievents@gmail.com',
       website: 'www.bintievents.com',
     };
   }
 
   /**
-   * Generate invoice HTML based on booking details
-   * @param {Object} booking - The booking document from MongoDB
-   * @returns {String} - HTML invoice content
+   * Generate PDF invoice buffer matching the Binti quote template
    */
-  /**
-   * Generate email-safe invoice HTML (table-based layout for email clients)
-   */
-  generateInvoiceHTML(booking) {
-    const invoiceDate = new Date().toLocaleDateString('en-GB', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).replace(/\//g, '/');
+  generateInvoicePDF(booking) {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = 210;
+    const margin = 20;
+    const contentWidth = pageWidth - margin * 2;
 
-    const eventDate = new Date(booking.eventDate).toLocaleDateString('en-GB', {
-      year: 'numeric', month: 'long', day: 'numeric',
+    // Colors
+    const gold = [255, 199, 0];       // #FFC700
+    const purple = [120, 81, 169];     // #7851A9
+    const pink = [255, 192, 250];      // #FFC0FA - table header
+    const black = [51, 51, 51];        // #333333
+    const gray = [102, 102, 102];      // #666666
+    const lightGray = [200, 200, 200]; // borders
+
+    // Date formatting
+    const invoiceDate = new Date().toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'numeric', year: 'numeric',
+    });
+    const eventDate = booking.eventDate
+      ? new Date(booking.eventDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+      : 'N/A';
+
+    const invoiceNo = (booking._id || '').substring(0, 8).toUpperCase();
+    const items = this.generateInvoiceItems(booking);
+
+    let y = margin;
+
+    // ─── YELLOW LOGO BOX (left) ───
+    doc.setFillColor(...gold);
+    doc.rect(margin, y, 65, 35, 'F');
+
+    // "Binti" text inside yellow box
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(28);
+    doc.setTextColor(150, 50, 120); // dark pink/magenta for "Binti"
+    doc.text('Binti', margin + 14, y + 16);
+
+    // "Tents & Events" below
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(11);
+    doc.setTextColor(150, 50, 120);
+    doc.text('Tents & Events', margin + 10, y + 23);
+
+    // "Instinctively Elegant" tagline
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Instinctively Elegant', margin + 13, y + 29);
+
+    // ─── "INVOICE" title (right) ───
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(28);
+    doc.setTextColor(...black);
+    doc.text('INVOICE', pageWidth - margin, y + 8, { align: 'right' });
+
+    // ─── Company info (right-aligned) ───
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...black);
+    doc.text('Binti Events', pageWidth - margin, y + 16, { align: 'right' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...gray);
+    doc.text(this.companyInfo.address, pageWidth - margin, y + 21, { align: 'right' });
+    doc.text(this.companyInfo.city, pageWidth - margin, y + 25, { align: 'right' });
+    doc.text(this.companyInfo.country, pageWidth - margin, y + 29, { align: 'right' });
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.text('Customer Care', pageWidth - margin, y + 35, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(this.companyInfo.phone, pageWidth - margin, y + 39, { align: 'right' });
+    doc.text(this.companyInfo.email, pageWidth - margin, y + 43, { align: 'right' });
+    doc.text(this.companyInfo.website, pageWidth - margin, y + 47, { align: 'right' });
+
+    y += 58;
+
+    // ─── FOR section (client) + Invoice details ───
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...black);
+    doc.text('FOR', margin, y);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(booking.fullname || 'N/A', margin, y + 6);
+    doc.text(booking.venue || '', margin, y + 11);
+    doc.text(booking.location || 'Kenya', margin, y + 16);
+
+    // Invoice No, Issue date, Payment Status (right side)
+    const labelX = pageWidth - margin - 55;
+    const valueX = pageWidth - margin;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...gray);
+    doc.text('Invoice No.:', labelX, y, { align: 'right' });
+    doc.text('Issue date:', labelX, y + 6, { align: 'right' });
+    doc.text('Payment:', labelX, y + 12, { align: 'right' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...black);
+    doc.text('INV-' + invoiceNo, valueX, y, { align: 'right' });
+    doc.text(invoiceDate, valueX, y + 6, { align: 'right' });
+
+    // "PAID" in green
+    doc.setTextColor(76, 175, 80);
+    doc.text('PAID', valueX, y + 12, { align: 'right' });
+
+    y += 24;
+
+    // ─── Event date & venue ───
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.setTextColor(...black);
+    doc.text(`Event date : ${eventDate}`, margin, y);
+    y += 5;
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(booking.venue || '', margin, y);
+
+    if (booking.transactionId) {
+      doc.setFontSize(8);
+      doc.setTextColor(...gray);
+      doc.text(`Transaction ID: ${booking.transactionId}`, margin, y + 5);
+      y += 10;
+    } else {
+      y += 5;
+    }
+
+    y += 5;
+
+    // ─── ITEMS TABLE ───
+    const colWidths = [contentWidth * 0.42, contentWidth * 0.16, contentWidth * 0.21, contentWidth * 0.21];
+    const colX = [margin, margin + colWidths[0], margin + colWidths[0] + colWidths[1], margin + colWidths[0] + colWidths[1] + colWidths[2]];
+
+    // Table header (pink/magenta background)
+    doc.setFillColor(...pink);
+    doc.rect(margin, y, contentWidth, 8, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...black);
+    doc.text('DESCRIPTION', colX[0] + 2, y + 5.5);
+    doc.text('QUANTITY', colX[1] + colWidths[1] / 2, y + 5.5, { align: 'center' });
+    doc.text('UNIT PRICE (KSH)', colX[2] + colWidths[2] - 2, y + 5.5, { align: 'right' });
+    doc.text('AMOUNT (KSH)', colX[3] + colWidths[3] - 2, y + 5.5, { align: 'right' });
+
+    y += 8;
+
+    // Table rows
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...black);
+
+    items.forEach(item => {
+      // Row border
+      doc.setDrawColor(...lightGray);
+      doc.line(margin, y + 7, margin + contentWidth, y + 7);
+
+      doc.text(item.description, colX[0] + 2, y + 5);
+      doc.text(String(item.quantity), colX[1] + colWidths[1] / 2, y + 5, { align: 'center' });
+      doc.text(this.formatAmount(item.unitPrice), colX[2] + colWidths[2] - 2, y + 5, { align: 'right' });
+      doc.text(this.formatAmount(item.amount), colX[3] + colWidths[3] - 2, y + 5, { align: 'right' });
+
+      y += 8;
     });
 
-    const invoiceItems = this.generateInvoiceItems(booking);
-    const itemsHTML = invoiceItems.map(item => `
-      <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #ddd;text-align:left;">${item.description}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #ddd;text-align:center;">${item.quantity}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #ddd;text-align:right;">KES ${item.unitPrice.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #ddd;text-align:right;font-weight:bold;">KES ${item.amount.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-      </tr>
-    `).join('');
+    // Bottom border of table
+    doc.setDrawColor(...lightGray);
+    doc.line(margin, y, margin + contentWidth, y);
 
+    y += 5;
+
+    // ─── TOTAL row ───
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...black);
+    doc.text('TOTAL (KES):', colX[2] + colWidths[2] - 2, y + 2, { align: 'right' });
+    doc.text('KSh' + this.formatAmount(booking.totalAmount), colX[3] + colWidths[3] - 2, y + 2, { align: 'right' });
+
+    y += 4;
+
+    // Deposit info
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...gray);
     const depositPaid = Math.round(booking.totalAmount * 0.8);
     const balanceDue = booking.totalAmount - depositPaid;
+    doc.text(`Deposit Paid (80%): KES ${depositPaid.toLocaleString()}   |   Balance Due (20%): KES ${balanceDue.toLocaleString()}`, margin, y + 4);
 
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Invoice - Binti Events</title></head><body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;color:#333;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;padding:20px 0;">
-<tr><td align="center">
-<table width="650" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
-  <!-- Gold Banner -->
-  <tr><td style="background:linear-gradient(135deg,#FFC700,#FFB700);height:8px;"></td></tr>
-  
-  <!-- Header -->
-  <tr><td style="padding:30px 40px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td style="vertical-align:top;">
-          <h2 style="color:#7851A9;margin:0 0 8px 0;font-size:22px;">🎪 Binti Events</h2>
-          <p style="font-size:11px;color:#666;margin:2px 0;">${this.companyInfo.address}</p>
-          <p style="font-size:11px;color:#666;margin:2px 0;">📞 ${this.companyInfo.phone}</p>
-          <p style="font-size:11px;color:#666;margin:2px 0;">📧 ${this.companyInfo.email}</p>
-          <p style="font-size:11px;color:#666;margin:2px 0;">🌐 ${this.companyInfo.website}</p>
-        </td>
-        <td style="vertical-align:top;text-align:right;">
-          <h1 style="font-size:36px;color:#7851A9;margin:0 0 10px 0;letter-spacing:2px;">INVOICE</h1>
-          <p style="font-size:13px;margin:4px 0;"><strong style="color:#7851A9;">Invoice No:</strong> INV-${(booking._id || '').substring(0, 8).toUpperCase()}</p>
-          <p style="font-size:13px;margin:4px 0;"><strong style="color:#7851A9;">Date:</strong> ${invoiceDate}</p>
-          <p style="font-size:13px;margin:4px 0;"><strong style="color:#7851A9;">Status:</strong> <span style="color:#4CAF50;font-weight:bold;">PAID ✓</span></p>
-        </td>
-      </tr>
-    </table>
-  </td></tr>
+    y += 14;
 
-  <!-- Divider -->
-  <tr><td style="padding:0 40px;"><hr style="border:none;border-top:2px solid #f0f0f0;margin:0;"></td></tr>
+    // ─── TERMS & CONDITIONS ───
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(8);
+    doc.setTextColor(...black);
+    doc.text('Terms & conditions apply:', margin, y);
 
-  <!-- Client & Event Details -->
-  <tr><td style="padding:20px 40px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td style="vertical-align:top;width:50%;">
-          <p style="font-size:11px;font-weight:bold;color:#7851A9;margin:0 0 8px 0;text-transform:uppercase;">Bill To</p>
-          <p style="font-size:14px;font-weight:bold;margin:3px 0;">${booking.fullname}</p>
-          <p style="font-size:13px;color:#555;margin:3px 0;">${booking.venue || ''}</p>
-          <p style="font-size:13px;color:#555;margin:3px 0;">${booking.location || 'Kenya'}</p>
-          <p style="font-size:13px;color:#555;margin:3px 0;">📧 ${booking.email}</p>
-          <p style="font-size:13px;color:#555;margin:3px 0;">📞 ${booking.phone}</p>
-        </td>
-        <td style="vertical-align:top;width:50%;text-align:right;">
-          <p style="font-size:11px;font-weight:bold;color:#7851A9;margin:0 0 8px 0;text-transform:uppercase;">Event Details</p>
-          <p style="font-size:13px;margin:3px 0;"><strong>Event Date:</strong> ${eventDate}</p>
-          <p style="font-size:13px;margin:3px 0;"><strong>Setup Time:</strong> ${booking.setupTime || 'N/A'}</p>
-          ${booking.transactionId ? `<p style="font-size:13px;margin:3px 0;"><strong>Transaction ID:</strong><br><code style="font-size:12px;background:#f5f0ff;padding:2px 6px;border-radius:3px;">${booking.transactionId}</code></p>` : ''}
-        </td>
-      </tr>
-    </table>
-  </td></tr>
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...gray);
 
-  <!-- Payment Status Badge -->
-  <tr><td style="padding:0 40px;">
-    <div style="background:#e8f5e9;color:#2e7d32;padding:12px;border-radius:4px;text-align:center;font-weight:bold;font-size:14px;border-left:5px solid #4CAF50;">
-      ✓ PAYMENT CONFIRMED ${booking.transactionId ? '— Transaction: ' + booking.transactionId : ''}
-    </div>
-  </td></tr>
+    const terms = [
+      'Client by signing of the contract & making payment authorizes Binti Tents & Events to supply the above facilities',
+      'Payment of at least 80% confirms your booking upon signing below; balance to be upon set up',
+      'Cancellation policy: Cancellation must be in writing. A month before event: 50% refund, 2 weeks before: 25% refund; Less than a week: non refundable',
+      'Client agrees to safeguard the equipment and be solely responsible for any loss or damage of the same that may occur during period of hire',
+      'Quote valid for 30 days',
+    ];
 
-  <!-- Items Table -->
-  <tr><td style="padding:20px 40px;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
-      <thead>
-        <tr style="background:#f5f0ff;">
-          <th style="padding:12px;text-align:left;font-weight:bold;border-bottom:2px solid #7851A9;color:#7851A9;">DESCRIPTION</th>
-          <th style="padding:12px;text-align:center;font-weight:bold;border-bottom:2px solid #7851A9;color:#7851A9;">QTY</th>
-          <th style="padding:12px;text-align:right;font-weight:bold;border-bottom:2px solid #7851A9;color:#7851A9;">UNIT PRICE</th>
-          <th style="padding:12px;text-align:right;font-weight:bold;border-bottom:2px solid #7851A9;color:#7851A9;">AMOUNT</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemsHTML}
-      </tbody>
-    </table>
-  </td></tr>
+    terms.forEach((term, i) => {
+      const lines = doc.splitTextToSize(`${i + 1}. ${term}`, contentWidth);
+      doc.text(lines, margin, y);
+      y += lines.length * 3.5;
+    });
 
-  <!-- Totals -->
-  <tr><td style="padding:0 40px 20px;">
-    <table width="300" cellpadding="0" cellspacing="0" style="margin-left:auto;border:2px solid #7851A9;border-radius:6px;background:#faf8ff;">
-      <tr>
-        <td style="padding:10px 15px;font-size:13px;color:#555;">Deposit Paid (80%)</td>
-        <td style="padding:10px 15px;font-size:13px;text-align:right;font-weight:bold;color:#4CAF50;">KES ${depositPaid.toLocaleString()}</td>
-      </tr>
-      <tr>
-        <td style="padding:10px 15px;font-size:13px;color:#555;">Balance Due (20%)</td>
-        <td style="padding:10px 15px;font-size:13px;text-align:right;font-weight:bold;color:#e65100;">KES ${balanceDue.toLocaleString()}</td>
-      </tr>
-      <tr>
-        <td colspan="2" style="border-top:2px solid #7851A9;padding:12px 15px;">
-          <table width="100%"><tr>
-            <td style="font-size:16px;font-weight:bold;color:#7851A9;">TOTAL</td>
-            <td style="font-size:16px;font-weight:bold;color:#7851A9;text-align:right;">KES ${booking.totalAmount.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-          </tr></table>
-        </td>
-      </tr>
-    </table>
-  </td></tr>
+    y += 8;
 
-  <!-- Terms & Conditions -->
-  <tr><td style="padding:0 40px;">
-    <hr style="border:none;border-top:2px solid #f0f0f0;margin:0 0 15px 0;">
-    <p style="font-size:11px;font-weight:bold;color:#7851A9;margin:0 0 8px 0;text-transform:uppercase;">Terms &amp; Conditions</p>
-    <ol style="font-size:11px;color:#666;line-height:1.8;margin:0;padding-left:20px;">
-      <li>By signing this contract, the client authorizes Binti Events to supply the above facilities as agreed.</li>
-      <li>Binti Events is responsible for all equipment provided during the event period.</li>
-      <li>Cancellation Policy: A month before event: 50% refund | 2 weeks: 25% refund | Less than a week: No refund.</li>
-      <li>All payments must be received before the event setup begins.</li>
-    </ol>
-  </td></tr>
+    // ─── ISSUED BY ───
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...black);
+    doc.text('Issued by:', pageWidth - margin, y, { align: 'right' });
+    y += 5;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Binti', pageWidth - margin, y, { align: 'right' });
 
-  <!-- Footer -->
-  <tr><td style="padding:30px 40px;border-top:2px solid #FFB700;margin-top:30px;text-align:center;background:#faf8ff;">
-    <p style="font-size:20px;color:#7851A9;font-style:italic;font-weight:bold;margin:0 0 5px 0;">Thank You ❤️</p>
-    <p style="font-size:12px;color:#666;margin:0 0 10px 0;">FOR YOUR ORDER</p>
-    <p style="font-size:12px;color:#666;margin:0;">
-      <strong>Binti Events</strong><br>
-      📞 0702 424 242 &nbsp;|&nbsp; 📧 bintievents@gmail.com<br>
-      🌐 www.bintievents.com
-    </p>
-    <p style="font-size:10px;color:#999;margin:12px 0 0 0;">
-      Invoice generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}<br>
-      © ${new Date().getFullYear()} Binti Events. All rights reserved.
-    </p>
-  </td></tr>
-</table>
-</td></tr>
-</table>
-</body></html>`;
+    y += 12;
+
+    // ─── THANK YOU footer ───
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(18);
+    doc.setTextColor(217, 70, 239); // pink/magenta
+    doc.text('thank you', pageWidth / 2, y, { align: 'center' });
+
+    y += 6;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...black);
+    doc.text('FOR YOUR ORDER', pageWidth / 2, y, { align: 'center' });
+
+    y += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...gray);
+    doc.text("Let's get social @bintievents", pageWidth / 2, y, { align: 'center' });
+
+    // Return as Buffer
+    const arrayBuffer = doc.output('arraybuffer');
+    return Buffer.from(arrayBuffer);
+  }
+
+  /**
+   * Format number as amount string: "1,000.00"
+   */
+  formatAmount(value) {
+    return Number(value).toLocaleString('en-KE', { minimumFractionDigits: 2 });
   }
 
   /**
@@ -276,7 +383,7 @@ class InvoiceService {
   }
 
   /**
-   * Send invoice to customer as an HTML email
+   * Send invoice to customer as a PDF attachment
    */
   async sendInvoice(booking) {
     try {
@@ -287,17 +394,37 @@ class InvoiceService {
         throw new Error('Booking must have email address to send invoice');
       }
 
-      console.log(`[INVOICE] Generating invoice for booking ${booking._id}...`);
+      console.log(`[INVOICE] Generating PDF invoice for booking ${booking._id}...`);
 
-      const invoiceHTML = this.generateInvoiceHTML(booking);
+      const pdfBuffer = this.generateInvoicePDF(booking);
+      const invoiceNo = (booking._id || '').substring(0, 8).toUpperCase();
+      const pdfFilename = `Invoice_INV-${invoiceNo}.pdf`;
 
-      await this.emailService.sendEmailWithHTML({
+      console.log(`[INVOICE] PDF generated (${pdfBuffer.length} bytes), sending to ${booking.email}...`);
+
+      await this.emailService.sendEmailWithAttachment({
         to: booking.email,
-        subject: `Invoice - Binti Events (Booking #${(booking._id || '').substring(0, 8).toUpperCase()})`,
-        html: invoiceHTML,
+        subject: `Invoice - Binti Events (INV-${invoiceNo})`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+            <h2 style="color:#7851A9;">Dear ${booking.fullname || 'Valued Customer'},</h2>
+            <p>Thank you for your payment! Your invoice from Binti Events is attached as a PDF.</p>
+            <p><strong>Invoice No:</strong> INV-${invoiceNo}<br>
+            <strong>Amount:</strong> KES ${(booking.totalAmount || 0).toLocaleString()}<br>
+            ${booking.transactionId ? `<strong>Transaction ID:</strong> ${booking.transactionId}<br>` : ''}
+            <strong>Venue:</strong> ${booking.venue || 'N/A'}</p>
+            <p>For any questions, please contact us:<br>
+            📞 ${this.companyInfo.phone} | 📧 ${this.companyInfo.email}</p>
+            <p>Best regards,<br><strong>Binti Events Team</strong></p>
+          </div>
+        `,
+        attachments: [{
+          filename: pdfFilename,
+          content: pdfBuffer,
+        }],
       });
 
-      console.log(`[INVOICE] Invoice sent successfully to ${booking.email}`);
+      console.log(`[INVOICE] PDF Invoice sent successfully to ${booking.email}`);
       return true;
     } catch (error) {
       console.error('[INVOICE] Failed to send invoice:', error.message);
