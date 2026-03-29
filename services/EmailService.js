@@ -26,7 +26,7 @@ class EmailService {
     this.transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
-      secure: true, // SSL on port 465 (more reliable on cloud platforms)
+      secure: true,
       auth: {
         user: emailUser,
         pass: cleanPass,
@@ -36,7 +36,9 @@ class EmailService {
       greetingTimeout: 15000,
       tls: {
         rejectUnauthorized: false
-      }
+      },
+      // Force IPv4 - many cloud platforms have IPv6 DNS issues
+      family: 4
     });
 
     this.adminEmail = process.env.ADMIN_EMAIL || emailUser;
