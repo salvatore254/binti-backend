@@ -1,7 +1,7 @@
 /**
  * Invoice Service
  * Generates and sends invoices after payment confirmation
- * Matches the exact Binti Events quote PDF format (Screenshot.png)
+ * Matches the exact Binti Events quote PDF format
  * Uses jsPDF for lightweight PDF generation (no Puppeteer)
  */
 
@@ -21,20 +21,38 @@ class InvoiceService {
       email: 'bintievents@gmail.com',
       website: 'www.bintievents.com',
     };
+    this.logoUrl = 'https://bintievents.vercel.app/images/logo1.png';
+    this._logoBase64 = null;
+  }
+
+  /**
+   * Fetch the logo image and return as base64 data URI
+   */
+  async _loadLogo() {
+    if (this._logoBase64) return this._logoBase64;
+    try {
+      const response = await fetch(this.logoUrl);
+      if (!response.ok) throw new Error(`Logo fetch failed: ${response.status}`);
+      const arrayBuffer = await response.arrayBuffer();
+      this._logoBase64 = Buffer.from(arrayBuffer).toString('base64');
+      console.log('[INVOICE] Logo loaded successfully');
+      return this._logoBase64;
+    } catch (err) {
+      console.warn('[INVOICE] Could not load logo:', err.message);
+      return null;
+    }
   }
 
   /**
    * Generate PDF invoice buffer matching the Binti quote template
    */
-  generateInvoicePDF(booking) {
+  async generateInvoicePDF(booking) {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const pageWidth = 210;
     const margin = 20;
     const contentWidth = pageWidth - margin * 2;
 
     // Colors
-    const gold = [255, 199, 0];       // #FFC700
-    const purple = [120, 81, 169];     // #7851A9
     const pink = [255, 192, 250];      // #FFC0FA - table header
     const black = [51, 51, 51];        // #333333
     const gray = [102, 102, 102];      // #666666
@@ -53,26 +71,26 @@ class InvoiceService {
 
     let y = margin;
 
-    // ─── YELLOW LOGO BOX (left) ───
-    doc.setFillColor(...gold);
-    doc.rect(margin, y, 65, 35, 'F');
-
-    // "Binti" text inside yellow box
-    doc.setFont('helvetica', 'bolditalic');
-    doc.setFontSize(28);
-    doc.setTextColor(150, 50, 120); // dark pink/magenta for "Binti"
-    doc.text('Binti', margin + 14, y + 16);
-
-    // "Tents & Events" below
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(11);
-    doc.setTextColor(150, 50, 120);
-    doc.text('Tents & Events', margin + 10, y + 23);
-
-    // "Instinctively Elegant" tagline
-    doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Instinctively Elegant', margin + 13, y + 29);
+    // ─── LOGO (left) ───
+    const logoBase64 = await this._loadLogo();
+    if (logoBase64) {
+      try {
+        doc.addImage('data:image/png;base64,' + logoBase64, 'PNG', margin, y, 45, 20);
+      } catch (err) {
+        console.warn('[INVOICE] Could not embed logo image:', err.message);
+        // Fallback: text logo
+        doc.setFont('helvetica', 'bolditalic');
+        doc.setFontSize(22);
+        doc.setTextColor(150, 50, 120);
+        doc.text('Binti Events', margin, y + 14);
+      }
+    } else {
+      // Fallback: text logo
+      doc.setFont('helvetica', 'bolditalic');
+      doc.setFontSize(22);
+      doc.setTextColor(150, 50, 120);
+      doc.text('Binti Events', margin, y + 14);
+    }
 
     // ─── "INVOICE" title (right) ───
     doc.setFont('helvetica', 'bold');
@@ -163,7 +181,7 @@ class InvoiceService {
     const colWidths = [contentWidth * 0.42, contentWidth * 0.16, contentWidth * 0.21, contentWidth * 0.21];
     const colX = [margin, margin + colWidths[0], margin + colWidths[0] + colWidths[1], margin + colWidths[0] + colWidths[1] + colWidths[2]];
 
-    // Table header (pink/magenta background)
+    // Table header (pink background)
     doc.setFillColor(...pink);
     doc.rect(margin, y, contentWidth, 8, 'F');
 
@@ -254,27 +272,35 @@ class InvoiceService {
     doc.text('Issued by:', pageWidth - margin, y, { align: 'right' });
     y += 5;
     doc.setFont('helvetica', 'bold');
-    doc.text('Binti', pageWidth - margin, y, { align: 'right' });
+    doc.text('Binti Events', pageWidth - margin, y, { align: 'right' });
 
-    y += 12;
+    y += 14;
 
-    // ─── THANK YOU footer ───
-    doc.setFont('helvetica', 'bolditalic');
-    doc.setFontSize(18);
-    doc.setTextColor(217, 70, 239); // pink/magenta
-    doc.text('thank you', pageWidth / 2, y, { align: 'center' });
-
+    // ─── SOCIAL LINKS footer ───
+    doc.setDrawColor(...lightGray);
+    doc.line(margin, y, margin + contentWidth, y);
     y += 6;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(...black);
-    doc.text('FOR YOUR ORDER', pageWidth / 2, y, { align: 'center' });
 
-    y += 4;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
+    doc.setFontSize(8);
     doc.setTextColor(...gray);
-    doc.text("Let's get social @bintievents", pageWidth / 2, y, { align: 'center' });
+    doc.text("Let's get social  @bintievents", pageWidth / 2, y, { align: 'center' });
+    y += 5;
+
+    doc.setFontSize(7);
+    doc.setTextColor(120, 81, 169); // purple for links
+    const socialY = y;
+    const socialLinks = [
+      { label: 'Instagram', url: 'https://www.instagram.com/bintievents/' },
+      { label: 'Facebook', url: 'https://www.facebook.com/bintievents/' },
+      { label: 'TikTok', url: 'https://www.tiktok.com/@bintievents' },
+    ];
+    const socialSpacing = 35;
+    const socialStartX = pageWidth / 2 - socialSpacing;
+    socialLinks.forEach((link, i) => {
+      const x = socialStartX + i * socialSpacing;
+      doc.textWithLink(link.label, x, socialY, { url: link.url, align: 'center' });
+    });
 
     // Return as Buffer
     const arrayBuffer = doc.output('arraybuffer');
@@ -396,7 +422,7 @@ class InvoiceService {
 
       console.log(`[INVOICE] Generating PDF invoice for booking ${booking._id}...`);
 
-      const pdfBuffer = this.generateInvoicePDF(booking);
+      const pdfBuffer = await this.generateInvoicePDF(booking);
       const invoiceNo = (booking._id || '').substring(0, 8).toUpperCase();
       const pdfFilename = `Invoice_INV-${invoiceNo}.pdf`;
 
