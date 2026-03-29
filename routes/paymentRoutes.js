@@ -600,6 +600,21 @@ router.post("/test/simulate-success", async (req, res) => {
 
     console.log("[TEST] Simulated success for booking:", bookingId);
 
+    // Send WhatsApp notifications
+    let whatsappResult = { customer: null, admin: null };
+    try {
+      const WhatsAppService = require('../services/WhatsAppService');
+      const whatsAppService = WhatsAppService();
+      const customerWA = await whatsAppService.sendBookingConfirmation(booking);
+      whatsappResult.customer = customerWA;
+      console.log("[TEST] WhatsApp customer result:", customerWA);
+      const adminWA = await whatsAppService.sendAdminAlert(booking);
+      whatsappResult.admin = adminWA;
+      console.log("[TEST] WhatsApp admin result:", adminWA);
+    } catch (waErr) {
+      console.error("[TEST] WhatsApp error:", waErr.message);
+    }
+
     // Send confirmation email + invoice
     let emailResult = { success: false, error: "not attempted" };
     let invoiceResult = false;
@@ -633,6 +648,7 @@ router.post("/test/simulate-success", async (req, res) => {
       booking: { id: booking._id, status: booking.status, email: booking.email },
       email: emailResult,
       invoice: invoiceResult,
+      whatsapp: whatsappResult,
       receipt: fakeReceipt
     });
   } catch (error) {
