@@ -558,6 +558,58 @@ router.post("/test/mpesa-stk", async (req, res) => {
 });
 
 /**
+ * POST /api/payments/test/simulate-success
+ * Simulate a successful M-Pesa payment for testing
+ * Sets booking to paid and sends confirmation email
+ * Body: { bookingId }
+ */
+router.post("/test/simulate-success", async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    if (!bookingId) {
+      return res.status(400).json({ success: false, message: "Missing bookingId" });
+    }
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    const fakeReceipt = "SIM_" + Date.now();
+
+    booking.status = 'paid';
+    booking.paymentMethod = 'mpesa';
+    booking.transactionId = fakeReceipt;
+    booking.updatedAt = new Date();
+    await booking.save();
+
+    console.log("[TEST] Simulated success for booking:", bookingId);
+
+    // Send confirmation email
+    let emailResult = { success: false, error: "not attempted" };
+    try {
+      const emailService = getEmailService();
+      emailResult = await emailService.sendPaymentConfirmation(booking, fakeReceipt);
+      console.log("[TEST] Email result:", emailResult);
+    } catch (emailErr) {
+      console.error("[TEST] Email error:", emailErr.message);
+      emailResult = { success: false, error: emailErr.message };
+    }
+
+    return res.json({
+      success: true,
+      message: "Payment simulated successfully",
+      booking: { id: booking._id, status: booking.status, email: booking.email },
+      email: emailResult,
+      receipt: fakeReceipt
+    });
+  } catch (error) {
+    console.error("[TEST] Simulation error:", error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/payments/status/:bookingId
  * Check payment status for a booking
  * Returns current booking status: pending, payment_failed, paid, completed
