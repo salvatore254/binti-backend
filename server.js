@@ -136,6 +136,26 @@ app.post("/api/test-email", async (req, res) => {
       };
       result = await emailService.sendPaymentConfirmation(testBooking, 'TEST123456789');
     }
+    else if (testType === 'invoice') {
+      const testBooking = {
+        _id: 'TEST_' + Date.now(),
+        fullname: 'Test Customer',
+        phone: '+254700000000',
+        email: email,
+        venue: 'Test Venue',
+        location: 'Nairobi, Kenya',
+        eventDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        setupTime: '08:00',
+        totalAmount: 50000,
+        status: 'paid',
+        transactionId: 'TEST123456789',
+        breakdown: { tent: 35000, lighting: 8000, transport: 7000 },
+      };
+      const InvoiceService = require('./services/InvoiceService');
+      const invoiceService = new InvoiceService();
+      const sent = await invoiceService.sendInvoice(testBooking);
+      result = { success: sent, messageId: sent ? 'invoice-sent' : null, error: sent ? null : 'Invoice send failed' };
+    }
     
     if (result.success) {
       res.json({ 

@@ -585,8 +585,9 @@ router.post("/test/simulate-success", async (req, res) => {
 
     console.log("[TEST] Simulated success for booking:", bookingId);
 
-    // Send confirmation email
+    // Send confirmation email + invoice
     let emailResult = { success: false, error: "not attempted" };
+    let invoiceResult = false;
     try {
       const emailService = getEmailService();
       emailResult = await emailService.sendPaymentConfirmation(booking, fakeReceipt);
@@ -596,11 +597,21 @@ router.post("/test/simulate-success", async (req, res) => {
       emailResult = { success: false, error: emailErr.message };
     }
 
+    try {
+      const InvoiceService = require('../services/InvoiceService');
+      const invoiceService = new InvoiceService();
+      invoiceResult = await invoiceService.sendInvoice(booking);
+      console.log("[TEST] Invoice result:", invoiceResult);
+    } catch (invoiceErr) {
+      console.error("[TEST] Invoice error:", invoiceErr.message);
+    }
+
     return res.json({
       success: true,
       message: "Payment simulated successfully",
       booking: { id: booking._id, status: booking.status, email: booking.email },
       email: emailResult,
+      invoice: invoiceResult,
       receipt: fakeReceipt
     });
   } catch (error) {

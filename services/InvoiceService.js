@@ -2,13 +2,11 @@
  * Invoice Service
  * Generates and sends invoices after payment confirmation
  * Based on the Binti Events invoice template/quote format
- * Invoices are sent as PDF attachments
+ * Sends invoice as a styled HTML email (no Puppeteer required)
  */
 
 const EmailService = require('./EmailService');
 const logger = require('../utils/logger');
-const puppeteer = require('puppeteer');
-const fs = require('fs').promises;
 
 class InvoiceService {
   constructor() {
@@ -19,7 +17,6 @@ class InvoiceService {
       phone: '+254702424242',
       email: 'bintievents@gmail.com',
       website: 'www.bintievents.com',
-      logo: 'https://bintievents.vercel.app/logo.png', // Update with actual logo URL
     };
   }
 
@@ -28,407 +25,160 @@ class InvoiceService {
    * @param {Object} booking - The booking document from MongoDB
    * @returns {String} - HTML invoice content
    */
+  /**
+   * Generate email-safe invoice HTML (table-based layout for email clients)
+   */
   generateInvoiceHTML(booking) {
     const invoiceDate = new Date().toLocaleDateString('en-GB', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
+      year: 'numeric', month: '2-digit', day: '2-digit',
     }).replace(/\//g, '/');
 
     const eventDate = new Date(booking.eventDate).toLocaleDateString('en-GB', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+      year: 'numeric', month: 'long', day: 'numeric',
     });
 
-    // Generate invoice items from booking breakdown
     const invoiceItems = this.generateInvoiceItems(booking);
     const itemsHTML = invoiceItems.map(item => `
       <tr>
-        <td style="padding: 10px; border-bottom: 1px solid #ddd; text-align: left;">${item.description}</td>
-        <td style="padding: 10px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity}</td>
-        <td style="padding: 10px; border-bottom: 1px solid #ddd; text-align: right;">${item.unitPrice.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
-        <td style="padding: 10px; border-bottom: 1px solid #ddd; text-align: right; font-weight: bold;">${item.amount.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #ddd;text-align:left;">${item.description}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #ddd;text-align:center;">${item.quantity}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #ddd;text-align:right;">KES ${item.unitPrice.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #ddd;text-align:right;font-weight:bold;">KES ${item.amount.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
       </tr>
     `).join('');
 
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Invoice - Binti Events</title>
-        <style>
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-          }
-          
-          body {
-            font-family: Arial, sans-serif;
-            color: #333;
-            line-height: 1.6;
-            background-color: #f9f9f9;
-            padding: 20px;
-          }
-          
-          .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          }
-          
-          .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 40px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-          }
-          
-          .logo-section {
-            flex: 1;
-          }
-          
-          .logo-section h2 {
-            color: #9c27b0;
-            margin-bottom: 10px;
-            font-size: 24px;
-          }
-          
-          .invoice-title {
-            flex: 1;
-            text-align: right;
-          }
-          
-          .invoice-title h1 {
-            font-size: 32px;
-            color: #333;
-            margin-bottom: 10px;
-          }
-          
-          .invoice-details {
-            flex: 1;
-            text-align: right;
-            font-size: 14px;
-            line-height: 1.8;
-          }
-          
-          .invoice-details p {
-            margin: 5px 0;
-          }
-          
-          .invoice-details strong {
-            color: #9c27b0;
-          }
-          
-          .company-info {
-            font-size: 12px;
-            color: #666;
-            line-height: 1.6;
-          }
-          
-          .company-info p {
-            margin: 3px 0;
-          }
-          
-          .section-title {
-            font-size: 12px;
-            font-weight: bold;
-            color: #9c27b0;
-            margin-top: 5px;
-          }
-          
-          .customer-section {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 30px;
-            font-size: 14px;
-          }
-          
-          .customer-details {
-            flex: 1;
-          }
-          
-          .customer-details p {
-            margin: 5px 0;
-          }
-          
-          .event-details {
-            flex: 1;
-            text-align: right;
-          }
-          
-          .event-details p {
-            margin: 5px 0;
-          }
-          
-          .items-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 30px 0;
-            font-size: 14px;
-          }
-          
-          .items-table thead {
-            background: linear-gradient(135deg, #ffc0fa 0%, #e0b0ff 100%);
-            color: #333;
-          }
-          
-          .items-table thead th {
-            padding: 12px;
-            text-align: left;
-            font-weight: bold;
-            border-bottom: 2px solid #9c27b0;
-          }
-          
-          .items-table tbody tr:hover {
-            background-color: #f5f5f5;
-          }
-          
-          .items-table td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #ddd;
-          }
-          
-          .items-table .text-right {
-            text-align: right;
-          }
-          
-          .items-table .text-center {
-            text-align: center;
-          }
-          
-          .total-section {
-            display: flex;
-            justify-content: flex-end;
-            margin: 20px 0;
-            font-size: 14px;
-          }
-          
-          .total-box {
-            width: 300px;
-            border: 2px solid #9c27b0;
-            border-radius: 4px;
-            padding: 15px;
-            background: #fafafa;
-          }
-          
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-          }
-          
-          .total-row.grand-total {
-            font-size: 18px;
-            font-weight: bold;
-            color: #9c27b0;
-            border-top: 2px solid #9c27b0;
-            padding-top: 10px;
-            margin-bottom: 0;
-          }
-          
-          .terms-section {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 2px solid #f0f0f0;
-          }
-          
-          .terms-section h3 {
-            font-size: 12px;
-            font-weight: bold;
-            color: #9c27b0;
-            margin-bottom: 10px;
-          }
-          
-          .terms-section ol {
-            font-size: 11px;
-            color: #666;
-            margin-left: 20px;
-            line-height: 1.8;
-          }
-          
-          .terms-section li {
-            margin-bottom: 8px;
-          }
-          
-          .footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 2px solid #f0f0f0;
-            font-size: 12px;
-          }
-          
-          .issued-by {
-            flex: 1;
-          }
-          
-          .issued-by p {
-            margin: 5px 0;
-          }
-          
-          .thank-you {
-            flex: 1;
-            text-align: center;
-            color: #9c27b0;
-            font-style: italic;
-          }
-          
-          .thank-you h3 {
-            font-size: 20px;
-            margin-bottom: 5px;
-          }
-          
-          .social-icons {
-            text-align: center;
-            margin-top: 5px;
-            font-size: 12px;
-          }
-          
-          .payment-status {
-            background: #c8e6c9;
-            color: #2e7d32;
-            padding: 10px;
-            border-radius: 4px;
-            text-align: center;
-            font-weight: bold;
-            margin: 20px 0;
-            font-size: 14px;
-          }
+    const depositPaid = Math.round(booking.totalAmount * 0.8);
+    const balanceDue = booking.totalAmount - depositPaid;
 
-          @media print {
-            body {
-              background: white;
-            }
-            .container {
-              box-shadow: none;
-              padding: 0;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <!-- Header -->
-          <div class="header">
-            <div class="logo-section">
-              <h2> Binti Events</h2>
-              <div class="company-info">
-                <p>${this.companyInfo.address}</p>
-                <p class="section-title">Customer Care</p>
-                <p>${this.companyInfo.phone}</p>
-                <p>${this.companyInfo.email}</p>
-                <p>${this.companyInfo.website}</p>
-              </div>
-            </div>
-            
-            <div class="invoice-title">
-              <h1>INVOICE</h1>
-            </div>
-            
-            <div class="invoice-details">
-              <p><strong>Invoice No:</strong> ${booking._id.substring(0, 8).toUpperCase()}</p>
-              <p><strong>Issue date:</strong> ${invoiceDate}</p>
-              <p><strong>Payment Status:</strong> <span style="color: #4caf50; font-weight: bold;">PAID</span></p>
-            </div>
-          </div>
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Invoice - Binti Events</title></head><body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;color:#333;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;padding:20px 0;">
+<tr><td align="center">
+<table width="650" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
+  <!-- Gold Banner -->
+  <tr><td style="background:linear-gradient(135deg,#FFC700,#FFB700);height:8px;"></td></tr>
+  
+  <!-- Header -->
+  <tr><td style="padding:30px 40px;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="vertical-align:top;">
+          <h2 style="color:#7851A9;margin:0 0 8px 0;font-size:22px;">🎪 Binti Events</h2>
+          <p style="font-size:11px;color:#666;margin:2px 0;">${this.companyInfo.address}</p>
+          <p style="font-size:11px;color:#666;margin:2px 0;">📞 ${this.companyInfo.phone}</p>
+          <p style="font-size:11px;color:#666;margin:2px 0;">📧 ${this.companyInfo.email}</p>
+          <p style="font-size:11px;color:#666;margin:2px 0;">🌐 ${this.companyInfo.website}</p>
+        </td>
+        <td style="vertical-align:top;text-align:right;">
+          <h1 style="font-size:36px;color:#7851A9;margin:0 0 10px 0;letter-spacing:2px;">INVOICE</h1>
+          <p style="font-size:13px;margin:4px 0;"><strong style="color:#7851A9;">Invoice No:</strong> INV-${(booking._id || '').substring(0, 8).toUpperCase()}</p>
+          <p style="font-size:13px;margin:4px 0;"><strong style="color:#7851A9;">Date:</strong> ${invoiceDate}</p>
+          <p style="font-size:13px;margin:4px 0;"><strong style="color:#7851A9;">Status:</strong> <span style="color:#4CAF50;font-weight:bold;">PAID ✓</span></p>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
 
-          <!-- Client Details -->
-          <div class="customer-section">
-            <div class="customer-details">
-              <p><strong>FOR</strong></p>
-              <p>${booking.fullname}</p>
-              <p>${booking.venue}</p>
-              <p>${booking.location || 'Kenya'}</p>
-            </div>
-            
-            <div class="event-details">
-              <p><strong>Event date:</strong> ${eventDate}</p>
-              <p><strong>Setup time:</strong> ${booking.setupTime}</p>
-              <p><strong>Phone:</strong> ${booking.phone}</p>
-              <p><strong>Email:</strong> ${booking.email}</p>
-            </div>
-          </div>
+  <!-- Divider -->
+  <tr><td style="padding:0 40px;"><hr style="border:none;border-top:2px solid #f0f0f0;margin:0;"></td></tr>
 
-          <!-- Payment Status Badge -->
-          <div class="payment-status">
-            PAYMENT CONFIRMED - Transaction ID: ${booking.transactionId}
-          </div>
+  <!-- Client & Event Details -->
+  <tr><td style="padding:20px 40px;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="vertical-align:top;width:50%;">
+          <p style="font-size:11px;font-weight:bold;color:#7851A9;margin:0 0 8px 0;text-transform:uppercase;">Bill To</p>
+          <p style="font-size:14px;font-weight:bold;margin:3px 0;">${booking.fullname}</p>
+          <p style="font-size:13px;color:#555;margin:3px 0;">${booking.venue || ''}</p>
+          <p style="font-size:13px;color:#555;margin:3px 0;">${booking.location || 'Kenya'}</p>
+          <p style="font-size:13px;color:#555;margin:3px 0;">📧 ${booking.email}</p>
+          <p style="font-size:13px;color:#555;margin:3px 0;">📞 ${booking.phone}</p>
+        </td>
+        <td style="vertical-align:top;width:50%;text-align:right;">
+          <p style="font-size:11px;font-weight:bold;color:#7851A9;margin:0 0 8px 0;text-transform:uppercase;">Event Details</p>
+          <p style="font-size:13px;margin:3px 0;"><strong>Event Date:</strong> ${eventDate}</p>
+          <p style="font-size:13px;margin:3px 0;"><strong>Setup Time:</strong> ${booking.setupTime || 'N/A'}</p>
+          ${booking.transactionId ? `<p style="font-size:13px;margin:3px 0;"><strong>Transaction ID:</strong><br><code style="font-size:12px;background:#f5f0ff;padding:2px 6px;border-radius:3px;">${booking.transactionId}</code></p>` : ''}
+        </td>
+      </tr>
+    </table>
+  </td></tr>
 
-          <!-- Items Table -->
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th>DESCRIPTION</th>
-                <th class="text-center">QUANTITY</th>
-                <th class="text-right">UNIT PRICE (KSH)</th>
-                <th class="text-right">AMOUNT (KSH)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHTML}
-            </tbody>
-          </table>
+  <!-- Payment Status Badge -->
+  <tr><td style="padding:0 40px;">
+    <div style="background:#e8f5e9;color:#2e7d32;padding:12px;border-radius:4px;text-align:center;font-weight:bold;font-size:14px;border-left:5px solid #4CAF50;">
+      ✓ PAYMENT CONFIRMED ${booking.transactionId ? '— Transaction: ' + booking.transactionId : ''}
+    </div>
+  </td></tr>
 
-          <!-- Total Section -->
-          <div class="total-section">
-            <div class="total-box">
-              <div class="total-row grand-total">
-                <span>TOTAL (KES):</span>
-                <span>${booking.totalAmount.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</span>
-              </div>
-            </div>
-          </div>
+  <!-- Items Table -->
+  <tr><td style="padding:20px 40px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="background:#f5f0ff;">
+          <th style="padding:12px;text-align:left;font-weight:bold;border-bottom:2px solid #7851A9;color:#7851A9;">DESCRIPTION</th>
+          <th style="padding:12px;text-align:center;font-weight:bold;border-bottom:2px solid #7851A9;color:#7851A9;">QTY</th>
+          <th style="padding:12px;text-align:right;font-weight:bold;border-bottom:2px solid #7851A9;color:#7851A9;">UNIT PRICE</th>
+          <th style="padding:12px;text-align:right;font-weight:bold;border-bottom:2px solid #7851A9;color:#7851A9;">AMOUNT</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsHTML}
+      </tbody>
+    </table>
+  </td></tr>
 
-          <!-- Terms & Conditions -->
-          <div class="terms-section">
-            <h3>TERMS & CONDITIONS</h3>
-            <ol>
-              <li>By signing this contract, the client authorizes Binti Events to supply the above facilities as agreed.</li>
-              <li>Binti Events is responsible for all equipment provided during the event period.</li>
-              <li>Cancellation Policy: Cancellation must be in writing.
-                <ul style="margin-top: 5px; margin-left: 20px;">
-                  <li>A month before event: 50% refund</li>
-                  <li>2 weeks before event: 25% refund</li>
-                  <li>Less than a week: No refund</li>
-                </ul>
-              </li>
-              <li>Binti Events safeguards all equipment and is solely responsible for any loss or damage during the hire period.</li>
-              <li>All payments must be received before the event setup begins.</li>
-            </ol>
-          </div>
+  <!-- Totals -->
+  <tr><td style="padding:0 40px 20px;">
+    <table width="300" cellpadding="0" cellspacing="0" style="margin-left:auto;border:2px solid #7851A9;border-radius:6px;background:#faf8ff;">
+      <tr>
+        <td style="padding:10px 15px;font-size:13px;color:#555;">Deposit Paid (80%)</td>
+        <td style="padding:10px 15px;font-size:13px;text-align:right;font-weight:bold;color:#4CAF50;">KES ${depositPaid.toLocaleString()}</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 15px;font-size:13px;color:#555;">Balance Due (20%)</td>
+        <td style="padding:10px 15px;font-size:13px;text-align:right;font-weight:bold;color:#e65100;">KES ${balanceDue.toLocaleString()}</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="border-top:2px solid #7851A9;padding:12px 15px;">
+          <table width="100%"><tr>
+            <td style="font-size:16px;font-weight:bold;color:#7851A9;">TOTAL</td>
+            <td style="font-size:16px;font-weight:bold;color:#7851A9;text-align:right;">KES ${booking.totalAmount.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</td>
+          </tr></table>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
 
-          <!-- Footer -->
-          <div class="footer">
-            <div class="issued-by">
-              <p><strong>Issued by:</strong></p>
-              <p style="margin-top: 30px;">Binti Events Team</p>
-              <p style="font-size: 10px; color: #999; margin-top: 20px;">
-                Invoice generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
-              </p>
-            </div>
-            
-            <div class="thank-you">
-              <h3 style="font-family: cursive; color: #d946ef;">Thank You</h3>
-              <p>FOR YOUR ORDER</p>
-              <div class="social-icons">
-                <p>📱 0702 424 242 | 📧 bintievents@gmail.com</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+  <!-- Terms & Conditions -->
+  <tr><td style="padding:0 40px;">
+    <hr style="border:none;border-top:2px solid #f0f0f0;margin:0 0 15px 0;">
+    <p style="font-size:11px;font-weight:bold;color:#7851A9;margin:0 0 8px 0;text-transform:uppercase;">Terms &amp; Conditions</p>
+    <ol style="font-size:11px;color:#666;line-height:1.8;margin:0;padding-left:20px;">
+      <li>By signing this contract, the client authorizes Binti Events to supply the above facilities as agreed.</li>
+      <li>Binti Events is responsible for all equipment provided during the event period.</li>
+      <li>Cancellation Policy: A month before event: 50% refund | 2 weeks: 25% refund | Less than a week: No refund.</li>
+      <li>All payments must be received before the event setup begins.</li>
+    </ol>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:30px 40px;border-top:2px solid #FFB700;margin-top:30px;text-align:center;background:#faf8ff;">
+    <p style="font-size:20px;color:#7851A9;font-style:italic;font-weight:bold;margin:0 0 5px 0;">Thank You ❤️</p>
+    <p style="font-size:12px;color:#666;margin:0 0 10px 0;">FOR YOUR ORDER</p>
+    <p style="font-size:12px;color:#666;margin:0;">
+      <strong>Binti Events</strong><br>
+      📞 0702 424 242 &nbsp;|&nbsp; 📧 bintievents@gmail.com<br>
+      🌐 www.bintievents.com
+    </p>
+    <p style="font-size:10px;color:#999;margin:12px 0 0 0;">
+      Invoice generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}<br>
+      © ${new Date().getFullYear()} Binti Events. All rights reserved.
+    </p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
   }
 
   /**
@@ -526,115 +276,28 @@ class InvoiceService {
   }
 
   /**
-   * Convert HTML invoice to PDF
-   * @param {String} html - HTML invoice content
-   * @param {String} bookingId - Booking ID for filename
-   * @returns {Promise<Buffer>} - PDF buffer
-   */
-  async generateInvoicePDF(html, bookingId) {
-    let browser = null;
-    try {
-      console.log(`[INVOICE] Converting invoice to PDF...`);
-      
-      // Launch browser for PDF generation
-      browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-
-      const page = await browser.newPage();
-      
-      // Set content and wait for all resources to load
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-
-      // Generate PDF with professional formatting
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        margin: {
-          top: '20px',
-          right: '20px',
-          bottom: '20px',
-          left: '20px'
-        },
-        printBackground: true,
-        scale: 1,
-      });
-
-      console.log(`[INVOICE] PDF generated successfully (${pdfBuffer.length} bytes)`);
-      return pdfBuffer;
-    } catch (error) {
-      console.error('[INVOICE] PDF generation failed:', error.message);
-      throw error;
-    } finally {
-      if (browser) {
-        await browser.close();
-      }
-    }
-  }
-
-  /**
-   * Send invoice to customer via email as PDF attachment
-   * @param {Object} booking - The booking document with payment confirmation
-   * @returns {Promise<Boolean>} - Success status
+   * Send invoice to customer as an HTML email
    */
   async sendInvoice(booking) {
-    let pdfBuffer = null;
-    
     try {
       if (!booking || booking.status !== 'paid') {
         throw new Error('Booking must have paid status to send invoice');
       }
-
       if (!booking.email) {
         throw new Error('Booking must have email address to send invoice');
       }
 
       console.log(`[INVOICE] Generating invoice for booking ${booking._id}...`);
 
-      // Generate invoice HTML
       const invoiceHTML = this.generateInvoiceHTML(booking);
 
-      // Convert HTML to PDF
-      pdfBuffer = await this.generateInvoicePDF(invoiceHTML, booking._id);
-
-      // Prepare email
-      const emailSubject = `Invoice - Binti Events (Booking #${booking._id.substring(0, 8).toUpperCase()})`;
-      
-      const emailBody = `
-        <h2>Dear ${booking.fullname},</h2>
-        <p>Thank you for your payment! Your invoice for the Binti Events booking is attached as a PDF.</p>
-        <p><strong>Event Details:</strong></p>
-        <ul>
-          <li>Venue: ${booking.venue}</li>
-          <li>Location: ${booking.location}</li>
-          <li>Event Date: ${new Date(booking.eventDate).toLocaleDateString()}</li>
-          <li>Total Amount Paid: KES ${booking.totalAmount.toLocaleString('en-KE', { minimumFractionDigits: 2 })}</li>
-          <li>Transaction ID: ${booking.transactionId}</li>
-        </ul>
-        <p>For any questions, please contact us:</p>
-        <p>
-          📧 ${this.companyInfo.email}<br>
-          📱 ${this.companyInfo.phone}<br>
-          🌐 ${this.companyInfo.website}
-        </p>
-        <p>Best regards,<br><strong>Binti Events Team</strong></p>
-      `;
-
-      // Send email with PDF attachment
-      const pdfFilename = `Invoice_${booking._id.substring(0, 8).toUpperCase()}.pdf`;
-      
-      await this.emailService.sendEmailWithAttachment({
+      await this.emailService.sendEmailWithHTML({
         to: booking.email,
-        subject: emailSubject,
-        html: emailBody,
-        attachments: [{
-          filename: pdfFilename,
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        }]
+        subject: `Invoice - Binti Events (Booking #${(booking._id || '').substring(0, 8).toUpperCase()})`,
+        html: invoiceHTML,
       });
 
-      console.log(`[INVOICE] PDF Invoice sent successfully to ${booking.email}`);
+      console.log(`[INVOICE] Invoice sent successfully to ${booking.email}`);
       return true;
     } catch (error) {
       console.error('[INVOICE] Failed to send invoice:', error.message);

@@ -38,9 +38,11 @@ services:
         value: ${MPESA_CALLBACK_URL}
       - key: MPESA_PASSKEY
         value: ${MPESA_PASSKEY}
-      - key: EMAIL_USER
-        value: ${EMAIL_USER}
-      - key: EMAIL_PASS
-        value: ${EMAIL_PASS}
+      - key: RESEND_API_KEY
+        value: ${RESEND_API_KEY}
+      - key: EMAIL_FROM
+        value: "Binti Events <onboarding@resend.dev>"
+      - key: ADMIN_EMAIL
+        value: ${ADMIN_EMAIL}
       - key: BACKEND_URL
         value: ${BACKEND_URL}
