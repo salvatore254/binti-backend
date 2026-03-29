@@ -25,21 +25,17 @@ class EmailService {
     
     this.transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // Use TLS (not SSL) on port 587
+      port: 465,
+      secure: true, // SSL on port 465 (more reliable on cloud platforms)
       auth: {
         user: emailUser,
-        pass: cleanPass, // Remove spaces from app-specific password
+        pass: cleanPass,
       },
-      pool: {
-        maxConnections: 1,
-        maxMessages: 10,
-      },
-      connectionTimeout: 20000, // 20 second timeout (Render needs more time)
-      socketTimeout: 20000,     // 20 second socket timeout
-      greetingTimeout: 10000,   // 10 second greeting timeout
+      connectionTimeout: 30000,
+      socketTimeout: 30000,
+      greetingTimeout: 15000,
       tls: {
-        rejectUnauthorized: false // Relaxed for cloud environments like Render
+        rejectUnauthorized: false
       }
     });
 
@@ -47,7 +43,7 @@ class EmailService {
     console.log('[EMAIL] EmailService initialized');
     console.log('[EMAIL] Sending emails from:', emailUser);
     console.log('[EMAIL] Admin email:', this.adminEmail);
-    console.log('[EMAIL] SMTP Config: host=smtp.gmail.com, port=587, secure=false (TLS)');
+    console.log('[EMAIL] SMTP Config: host=smtp.gmail.com, port=465, secure=true (SSL)');
   }
 
   /**
