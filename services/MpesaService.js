@@ -314,7 +314,9 @@ class MpesaService {
       metadata[item.Name] = item.Value;
     }
     
-    const resultCode = callbackData.Body?.stkCallback?.ResultCode || null;
+    const resultCode = callbackData.Body?.stkCallback?.ResultCode ?? null;
+    // IMPORTANT: Use ?? (nullish coalescing) NOT || (logical OR)
+    // ResultCode 0 = success, but 0 || null = null (JS falsy trap!)
     
     // Map common result codes to user-friendly descriptions
     const resultCodeDescriptions = {
