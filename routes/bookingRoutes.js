@@ -170,7 +170,7 @@ router.post("/calculate", (req, res) => {
           zoneInfo: transportCalc.zoneInfo
         };
       } catch (transportErr) {
-        console.error("🚨 TransportService crash:", {
+        console.error(" TransportService crash:", {
           message: transportErr.message,
           stack: transportErr.stack,
           location: transportVenue
@@ -497,6 +497,7 @@ router.post("/confirm", async (req, res) => {
       }
 
       // OLD format transport (legacy)
+      const transport = req.body.transport;
       if (transport === "yes" || transport === true) {
         if (location && typeof location === "string") {
           const transportCalc = TransportService.calculateTransportCost(location);
