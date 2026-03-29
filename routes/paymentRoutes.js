@@ -399,7 +399,7 @@ router.post("/mpesa-callback", async (req, res) => {
       booking.updatedAt = new Date();
       await booking.save();
 
-      console.log("[MPESA CALLBACK] ✅ Booking status updated to PAID (ID:", booking._id, ")");
+      console.log("[MPESA CALLBACK] Booking status updated to PAID (ID:", booking._id, ")");
 
       // Send confirmation email
       try {
@@ -409,12 +409,27 @@ router.post("/mpesa-callback", async (req, res) => {
         const emailResult = await emailService.sendPaymentConfirmation(emailData, callbackData.mpesaReceiptNumber);
         
         if (emailResult.success) {
-          console.log("[MPESA CALLBACK] ✅ Confirmation email sent (ID:", emailResult.messageId, ")");
+          console.log("[MPESA CALLBACK] Confirmation email sent (ID:", emailResult.messageId, ")");
         } else {
-          console.warn("[MPESA CALLBACK] ⚠️  Email failed:", emailResult.error);
+          console.warn("[MPESA CALLBACK] Email failed:", emailResult.error);
         }
       } catch (emailError) {
-        console.error("[MPESA CALLBACK] ❌ Email error:", emailError.message);
+        console.error("[MPESA CALLBACK] Email error:", emailError.message);
+      }
+
+      // Send invoice and mark as sent
+      try {
+        const InvoiceService = require('../services/InvoiceService');
+        const invoiceService = new InvoiceService();
+        const invoiceSent = await invoiceService.sendInvoice(booking);
+        if (invoiceSent) {
+          booking.invoiceSent = true;
+          booking.invoiceSentAt = new Date();
+          await booking.save();
+          console.log("[MPESA CALLBACK] Invoice sent and flagged for booking", booking._id);
+        }
+      } catch (invoiceErr) {
+        console.error("[MPESA CALLBACK] Invoice error:", invoiceErr.message);
       }
 
     } else {
@@ -602,6 +617,12 @@ router.post("/test/simulate-success", async (req, res) => {
       const invoiceService = new InvoiceService();
       invoiceResult = await invoiceService.sendInvoice(booking);
       console.log("[TEST] Invoice result:", invoiceResult);
+      if (invoiceResult) {
+        booking.invoiceSent = true;
+        booking.invoiceSentAt = new Date();
+        await booking.save();
+        console.log("[TEST] invoiceSent flag set to true");
+      }
     } catch (invoiceErr) {
       console.error("[TEST] Invoice error:", invoiceErr.message);
     }

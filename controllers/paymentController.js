@@ -182,8 +182,15 @@ const mpesaCallback = async (req, res, next) => {
           }
         })();
         
-        // Send invoice asynchronously
-        invoiceService.sendInvoice(booking).catch(err => {
+        // Send invoice asynchronously and mark as sent
+        invoiceService.sendInvoice(booking).then(async (success) => {
+          if (success) {
+            booking.invoiceSent = true;
+            booking.invoiceSentAt = new Date();
+            await booking.save();
+            logger.info(`Invoice sent and flagged for booking ${booking._id}`);
+          }
+        }).catch(err => {
           logger.error(`Failed to send invoice for booking ${booking._id}: ${err.message}`);
         });
       } else {
@@ -251,8 +258,15 @@ const pesapalCallback = async (req, res, next) => {
           }
         })();
         
-        // Send invoice asynchronously
-        invoiceService.sendInvoice(booking).catch(err => {
+        // Send invoice asynchronously and mark as sent
+        invoiceService.sendInvoice(booking).then(async (success) => {
+          if (success) {
+            booking.invoiceSent = true;
+            booking.invoiceSentAt = new Date();
+            await booking.save();
+            logger.info(`Invoice sent and flagged for booking ${booking._id}`);
+          }
+        }).catch(err => {
           logger.error(`Failed to send invoice for booking ${booking._id}: ${err.message}`);
         });
       } else {

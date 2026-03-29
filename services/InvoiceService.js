@@ -419,6 +419,10 @@ class InvoiceService {
       if (!booking.email) {
         throw new Error('Booking must have email address to send invoice');
       }
+      if (booking.invoiceSent === true) {
+        console.log(`[INVOICE] Invoice already sent for booking ${booking._id}, skipping`);
+        return false;
+      }
 
       console.log(`[INVOICE] Generating PDF invoice for booking ${booking._id}...`);
 
@@ -432,7 +436,6 @@ class InvoiceService {
         to: booking.email,
         subject: `Invoice - Binti Events (INV-${invoiceNo})`,
         html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#333;background:#f5f5f5;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:4px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);"><tr><td style="padding:25px 30px;border-bottom:3px solid #FFC0FA;"><img src="https://bintievents.vercel.app/images/logo1.png" alt="Binti Events" width="120" style="display:block;max-width:120px;height:auto;"></td></tr><tr><td style="padding:25px 30px;"><p style="font-size:15px;margin:0 0 6px 0;">Dear <strong>${booking.fullname || 'Valued Customer'}</strong>,</p><p style="font-size:13px;color:#666;margin:0 0 18px 0;">Thank you for your payment. Your invoice from Binti Events is attached as a PDF.</p><table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;margin-bottom:18px;"><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;width:40%;">Invoice No</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">INV-${invoiceNo}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Amount</td><td style="padding:8px 0;color:#4CAF50;font-weight:700;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${(booking.totalAmount || 0).toLocaleString()}</td></tr>${booking.transactionId ? `<tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Transaction ID</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">${booking.transactionId}</td></tr>` : ''}<tr><td style="padding:8px 0;color:#666;">Venue</td><td style="padding:8px 0;color:#333;font-weight:600;text-align:right;">${booking.venue || 'N/A'}</td></tr></table><p style="font-size:13px;color:#666;margin:0 0 6px 0;">For any questions, please contact us:</p><p style="font-size:13px;color:#333;margin:0;">${this.companyInfo.phone} | ${this.companyInfo.email}</p></td></tr><tr><td style="background:#fafafa;border-top:2px solid #FFC0FA;padding:20px 30px;text-align:center;"><p style="font-size:12px;color:#666;margin:0 0 8px 0;"><strong style="color:#333;">Binti Events</strong></p><p style="font-size:11px;color:#999;margin:0;"><a href="https://www.instagram.com/bintievents/" style="color:#7851A9;text-decoration:none;">Instagram</a> &nbsp; <a href="https://www.facebook.com/bintievents/" style="color:#7851A9;text-decoration:none;">Facebook</a> &nbsp; <a href="https://www.tiktok.com/@bintievents" style="color:#7851A9;text-decoration:none;">TikTok</a></p></td></tr></table></td></tr></table></body></html>`,
-        `,
         attachments: [{
           filename: pdfFilename,
           content: pdfBuffer,
