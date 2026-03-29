@@ -575,18 +575,29 @@ router.post("/confirm", async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    // Return booking confirmation BEFORE saving to database (non-blocking)
-    // This ensures quick frontend response (< 1 second)
+    // Save booking to MongoDB BEFORE responding
+    try {
+      await booking.save();
+      console.log(`[BOOKING] Saved to database with ID: ${bookingId}`);
+    } catch (dbErr) {
+      console.error('[BOOKING] Failed to save to database:', dbErr.message);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to save booking. Please try again.",
+        error: dbErr.message
+      });
+    }
+
     const responseTime = Date.now() - startTime;
     console.log(`[CONFIRM] Responding (took ${responseTime}ms)`);
     
-    // Calculate deposit and remaining amounts (before save) for response
+    // Calculate deposit and remaining amounts for response
     const depositAmount = Math.round(total * 0.8);
     const remainingAmount = Math.round(total * 0.2);
     
     res.json({
       success: true,
-      message: "Booking processing started. Confirmation will be sent to your email.",
+      message: "Booking confirmed. Confirmation will be sent to your email.",
       bookingId: booking._id || bookingId,
       booking: booking.toJSON(),
       depositAmount: depositAmount,
@@ -594,17 +605,6 @@ router.post("/confirm", async (req, res) => {
       status: "processing",
       responseTime: `${responseTime}ms`
     });
-
-    // Save booking to MongoDB asynchronously (non-blocking - don't wait before responding)
-    // Database save happens in background after response is sent
-    (async () => {
-      try {
-        await booking.save();
-        console.log(`[BOOKING] Saved to database with ID: ${bookingId}`);
-      } catch (dbErr) {
-        console.error('[BOOKING] Failed to save to database:', dbErr.message);
-      }
-    })();
 
     // Send confirmation emails (non-blocking)
     if (emailService) {

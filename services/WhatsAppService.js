@@ -75,19 +75,20 @@ class WhatsAppService {
 
       logger.info('[WHATSAPP] Sending message to:', formattedPhone);
 
+      const params = new URLSearchParams();
+      params.append('username', this.userName);
+      params.append('to', formattedPhone);
+      params.append('message', message);
+      params.append('enqueue', '1');
+
       const response = await axios.post(
-        `${this.baseUrl}`,
-        {
-          username: this.userName,
-          to: formattedPhone,
-          message: message,
-          enqueue: 1, // Queue message if recipient not available
-        },
+        this.baseUrl,
+        params.toString(),
         {
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Bearer ${this.apiKey}`,
+            'apiKey': this.apiKey,
           },
           timeout: 10000,
         }
