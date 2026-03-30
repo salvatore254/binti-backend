@@ -54,6 +54,13 @@ const getExpectedDepositAmount = (booking) => {
 
 const amountsMatch = (actual, expected) => Math.round(Number(actual)) === Math.round(Number(expected));
 
+const normalizePesapalStatus = (status) => String(status || '').trim().toUpperCase();
+
+const isPesapalCompletedStatus = (status) => {
+  const normalizedStatus = normalizePesapalStatus(status);
+  return normalizedStatus === 'COMPLETED' || normalizedStatus === 'PAID';
+};
+
 const buildPesapalOrderRef = (bookingId) => {
   const bookingRef = String(bookingId || '')
     .replace(/[^A-Za-z0-9]/g, '')
@@ -92,7 +99,7 @@ const handlePesapalCallback = async (req, res) => {
     const statusCheck = await pesapalService.getTransactionStatus(validation.orderTrackingId);
     console.log("[PESAPAL CALLBACK] Payment status:", statusCheck.status);
 
-    if (statusCheck.status !== 'COMPLETED') {
+    if (!isPesapalCompletedStatus(statusCheck.status)) {
       console.warn("[PESAPAL CALLBACK] Payment not completed. Status:", statusCheck.status);
       return res.sendStatus(200);
     }
