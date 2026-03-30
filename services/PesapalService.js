@@ -8,6 +8,27 @@ const axios = require("axios");
  */
 
 class PesapalService {
+  normalizeResponseData(data) {
+    if (Buffer.isBuffer(data)) {
+      const text = data.toString('utf8');
+      try {
+        return JSON.parse(text);
+      } catch (error) {
+        return text;
+      }
+    }
+
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch (error) {
+        return data;
+      }
+    }
+
+    return data;
+  }
+
   constructor() {
     this.consumerKey = process.env.PESAPAL_CONSUMER_KEY;
     this.consumerSecret = process.env.PESAPAL_CONSUMER_SECRET;
@@ -69,19 +90,25 @@ class PesapalService {
         timeout: 10000
       });
 
-      if (response.data && response.data.token) {
-        this.accessToken = response.data.token;
+      const responseData = this.normalizeResponseData(response.data);
+
+      if (responseData && responseData.token) {
+        this.accessToken = responseData.token;
         // Token typically expires in 1 hour; cache for 59 minutes
         this.tokenExpiry = Date.now() + (59 * 60 * 1000);
         console.log('[PESAPAL] Access token obtained successfully');
         return this.accessToken;
       } else {
-        const apiErrorMessage = response.data?.error?.message || response.data?.message;
+        const apiErrorMessage = responseData?.error?.message || responseData?.message;
         if (apiErrorMessage) {
           throw new Error(`Pesapal token request rejected: ${apiErrorMessage}`);
         }
 
-        throw new Error('No access token in response');
+        const rawSnippet = typeof responseData === 'string'
+          ? responseData.slice(0, 300)
+          : JSON.stringify(responseData).slice(0, 300);
+
+        throw new Error(`No access token in response. Raw response: ${rawSnippet || '[empty body]'}`);
       }
     } catch (error) {
       console.error('[PESAPAL] Failed to get access token:', error.message);
