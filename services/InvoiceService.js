@@ -21,7 +21,7 @@ class InvoiceService {
       email: 'bintievents@gmail.com',
       website: 'www.bintievents.com',
     };
-    this.logoUrl = 'https://bintievents.vercel.app/images/logo1.png';
+    this.logoUrl = 'https://bintievents.vercel.app/images/invoicelogo1.jpg';
     this._logoBase64 = null;
   }
 
@@ -324,28 +324,82 @@ class InvoiceService {
 
     // Parse the breakdown object to generate items
     if (booking.breakdown && typeof booking.breakdown === 'object') {
-      for (const [key, value] of Object.entries(booking.breakdown)) {
-        if (value > 0) {
-          const description = this.getItemDescription(key);
+      const bd = booking.breakdown;
+
+      // Package base price
+      if (bd.package && bd.package.basePrice > 0) {
+        items.push({
+          description: `${bd.package.name || 'Event'} Package`,
+          quantity: 1,
+          unitPrice: bd.package.basePrice,
+          amount: bd.package.basePrice,
+        });
+      }
+
+      // Individual tent configurations from breakdown
+      if (bd.tent && bd.tent.configurations && Array.isArray(bd.tent.configurations)) {
+        bd.tent.configurations.forEach(t => {
+          const name = this.getTentDisplayName(t);
           items.push({
-            description,
+            description: name,
+            quantity: 1,
+            unitPrice: t.cost || 0,
+            amount: t.cost || 0,
+          });
+        });
+      } else if (bd.tent && bd.tent.cost > 0) {
+        // Single tent entry
+        const name = this.getTentDisplayName(bd.tent);
+        items.push({
+          description: name,
+          quantity: 1,
+          unitPrice: bd.tent.cost,
+          amount: bd.tent.cost,
+        });
+      }
+
+      // Add-ons from breakdown (numeric values)
+      const addOnKeys = ['lighting', 'pasound', 'dancefloor', 'stagepodium', 'welcomesigns', 'decor', 'electrician', 'speaker', 'stage', 'signage', 'sitevisit'];
+      for (const [key, value] of Object.entries(bd)) {
+        if (key === 'package' || key === 'tent' || key === 'transport') continue;
+        if (typeof value === 'number' && value > 0) {
+          items.push({
+            description: this.getItemDescription(key),
             quantity: 1,
             unitPrice: value,
             amount: value,
           });
         }
       }
+
+      // Transport
+      if (bd.transport && typeof bd.transport === 'object' && bd.transport.cost > 0) {
+        items.push({
+          description: `Transport${bd.transport.zone ? ' (' + bd.transport.zone + ')' : ''}`,
+          quantity: 1,
+          unitPrice: bd.transport.cost,
+          amount: bd.transport.cost,
+        });
+      } else if (typeof bd.transport === 'number' && bd.transport > 0) {
+        items.push({
+          description: 'Transport',
+          quantity: 1,
+          unitPrice: bd.transport,
+          amount: bd.transport,
+        });
+      }
     }
 
-    // If no breakdown, generate from tentConfigs and add-ons
+    // Fallback: generate from tentConfigs and add-ons if breakdown didn't produce items
     if (items.length === 0) {
       if (booking.tentConfigs && booking.tentConfigs.length > 0) {
         booking.tentConfigs.forEach(tent => {
+          const name = this.getTentDisplayName(tent);
           items.push({
-            description: `${tent.tentType} tent${tent.size ? ` (${tent.size})` : ''}`,
+            description: name,
             quantity: tent.quantity || 1,
-            unitPrice: 20000, // Default, should come from breakdown
-            amount: (tent.quantity || 1) * 20000,
+            unitPrice: 0,
+            amount: 0,
           });
         });
       }
@@ -392,16 +446,47 @@ class InvoiceService {
    * @param {String} key - The breakdown key
    * @returns {String} - Description
    */
+  /**
+   * Get tent display name from a tent config object
+   */
+  getTentDisplayName(tent) {
+    const type = tent.tentType || tent.type || 'Tent';
+    const typeNames = {
+      'stretch': 'Stretch Tent',
+      'aframe': 'A-Frame Tent',
+      'a-frame': 'A-Frame Tent',
+      'cheese': 'Cheese Tent',
+      'bline': 'B-Line Tent',
+      'b-line': 'B-Line Tent',
+      'highpeak': 'High Peak Tent',
+      'high-peak': 'High Peak Tent',
+      'multi-config': 'Tent Setup',
+      'marquee': 'Marquee Tent',
+      'bell': 'Bell Tent',
+      'pergola': 'Pergola Tent',
+    };
+    let name = typeNames[type] || (type.charAt(0).toUpperCase() + type.slice(1) + ' Tent');
+    const size = tent.tentSize || tent.size;
+    if (size) name += ` (${size})`;
+    if (tent.sections) name += ` (${tent.sections} section${tent.sections > 1 ? 's' : ''})`;
+    if (tent.config) name += ` (${tent.config} ${type.includes('high') ? 'Seater' : 'Guest'})`;
+    if (tent.color) name += ` - ${tent.color}`;
+    return name;
+  }
+
   getItemDescription(key) {
     const descriptions = {
-      tent: 'Stretch tent',
+      tent: 'Tent Setup',
       lighting: 'Lighting - fashion strings',
       transport: 'Transport',
       electrician: 'Electrician fee',
       speaker: 'PA Sound System',
+      pasound: 'PA Sound System',
       dancefloor: 'Dance Floor',
       stage: 'Stage / Podium',
+      stagepodium: 'Stage / Podium',
       signage: 'Welcome Signs',
+      welcomesigns: 'Welcome Signs',
       sitevisit: 'Site Visit & Consultation',
       decor: 'Event Decoration',
     };
