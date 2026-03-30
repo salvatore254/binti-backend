@@ -16,14 +16,14 @@ class PesapalService {
     // Use PESAPAL_API_URL from env if explicitly set
     // Otherwise: check PESAPAL_USE_SANDBOX flag
     // Fallback: check NODE_ENV (production = live API, anything else = sandbox)
-    const useSandbox = process.env.PESAPAL_USE_SANDBOX === 'true' || 
+    const useSandbox = process.env.PESAPAL_USE_SANDBOX === 'true' ||
                        (process.env.PESAPAL_API_URL && process.env.PESAPAL_API_URL.includes('sandbox'));
     const isProduction = process.env.NODE_ENV === 'production' && !useSandbox;
     
     this.apiUrl = process.env.PESAPAL_API_URL || 
                   (isProduction ? 'https://api.pesapal.com' : 'https://sandbox.pesapal.com');
     
-    this.redirectUrl = process.env.PESAPAL_REDIRECT_URL || 'http://localhost:5000/payment-status';
+    this.redirectUrl = process.env.PESAPAL_REDIRECT_URL;
     
     this.authUrl = `${this.apiUrl}/api/Auth/RequestToken`;
     this.orderUrl = `${this.apiUrl}/api/Transactions/InitiatePayment`;
