@@ -608,6 +608,10 @@ router.get("/pesapal-iframe", async (req, res) => {
     res.json({
       success: true,
       iframe_url: paymentResult.iframe_url,
+      iframeUrl: paymentResult.iframeUrl || paymentResult.iframe_url,
+      redirect_url: paymentResult.redirect_url || paymentResult.iframe_url,
+      redirectUrl: paymentResult.redirectUrl || paymentResult.iframe_url,
+      url: paymentResult.url || paymentResult.iframe_url,
       orderTrackingId: paymentResult.orderTrackingId,
       orderRef: orderRef,
       booking: {

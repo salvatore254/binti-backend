@@ -221,6 +221,10 @@ router.post("/pesapal", async (req, res) => {
       success: true,
       message: "Payment order created successfully",
       iframe_url: result.iframe_url,
+      iframeUrl: result.iframeUrl || result.iframe_url,
+      redirect_url: result.redirect_url || result.iframe_url,
+      redirectUrl: result.redirectUrl || result.iframe_url,
+      url: result.url || result.iframe_url,
       orderTrackingId: result.orderTrackingId,
       responseCode: result.responseCode
     });

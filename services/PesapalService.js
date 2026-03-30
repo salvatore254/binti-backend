@@ -307,6 +307,10 @@ class PesapalService {
         return {
           success: true,
           iframe_url: iframeUrl,
+          iframeUrl,
+          redirect_url: iframeUrl,
+          redirectUrl: iframeUrl,
+          url: iframeUrl,
           orderTrackingId: trackingId,
           responseCode: responseData.status || responseData.response_code,
           responseDescription: responseData.message || responseData.response_description,
