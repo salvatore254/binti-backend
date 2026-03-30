@@ -45,9 +45,13 @@ class PesapalService {
             (isProduction ? 'https://pay.pesapal.com/v3' : 'https://cybqa.pesapal.com/pesapalv3');
     
     this.redirectUrl = process.env.PESAPAL_REDIRECT_URL || process.env.PESAPAL_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/pesapal-callback`;
+    this.ipnUrl = process.env.PESAPAL_IPN_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/pesapal-callback`;
+    this.notificationId = process.env.PESAPAL_NOTIFICATION_ID || null;
     
     this.authUrl = `${this.apiUrl}/api/Auth/RequestToken`;
-    this.orderUrl = `${this.apiUrl}/api/Transactions/InitiatePayment`;
+    this.registerIpnUrl = `${this.apiUrl}/api/URLSetup/RegisterIPN`;
+    this.getIpnListUrl = `${this.apiUrl}/api/URLSetup/GetIpnList`;
+    this.orderUrl = `${this.apiUrl}/api/Transactions/SubmitOrderRequest`;
     this.statusUrl = `${this.apiUrl}/api/Transactions/GetTransactionStatus`;
     
     this.accessToken = null;
@@ -136,6 +140,65 @@ class PesapalService {
     }
   }
 
+  async getNotificationId() {
+    if (this.notificationId) {
+      return this.notificationId;
+    }
+
+    const token = await this.getAccessToken();
+
+    try {
+      const listResponse = await axios({
+        method: 'GET',
+        url: this.getIpnListUrl,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        timeout: 10000
+      });
+
+      const listData = this.normalizeResponseData(listResponse.data);
+      const existingIpn = Array.isArray(listData)
+        ? listData.find((entry) => entry?.url === this.ipnUrl && entry?.ipn_id)
+        : null;
+
+      if (existingIpn?.ipn_id) {
+        this.notificationId = existingIpn.ipn_id;
+        return this.notificationId;
+      }
+    } catch (error) {
+      console.warn('[PESAPAL] Failed to fetch registered IPNs:', error.message);
+    }
+
+    const registerResponse = await axios({
+      method: 'POST',
+      url: this.registerIpnUrl,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      data: {
+        url: this.ipnUrl,
+        ipn_notification_type: 'GET'
+      },
+      timeout: 10000
+    });
+
+    const registerData = this.normalizeResponseData(registerResponse.data);
+    const notificationId = registerData?.ipn_id;
+
+    if (!notificationId) {
+      const apiErrorMessage = registerData?.error?.message || registerData?.message;
+      throw new Error(`Pesapal IPN registration failed: ${apiErrorMessage || JSON.stringify(registerData)}`);
+    }
+
+    this.notificationId = notificationId;
+    return this.notificationId;
+  }
+
   /**
    * Create a payment order and return iframe URL
    * @param {object} orderData - Payment order details
@@ -169,29 +232,31 @@ class PesapalService {
 
       // Get access token
       const token = await this.getAccessToken();
+      const notificationId = await this.getNotificationId();
 
       // Prepare order request payload
       const payload = {
-        Id: orderRef,
-        Currency: currency,
-        Amount: parseFloat(amount),
-        Description: description || 'Binti Events Booking',
-        Callback: this.redirectUrl,
-        Notification: {
-          id: orderRef
-        },
-        BillingAddress: {
+        id: orderRef,
+        currency,
+        amount: parseFloat(amount),
+        description: description || 'Binti Events Booking',
+        callback_url: this.redirectUrl,
+        redirect_mode: 'PARENT_WINDOW',
+        notification_id: notificationId,
+        billing_address: {
           email_address: email,
           phone_number: phone || '',
+          country_code: 'KE',
           first_name: firstName,
           last_name: lastName,
           line_1: 'Address Line 1',
-          postal_code: '00100',
+          line_2: '',
           city: 'Nairobi',
-          state: 'County',
-          country: 'KE'
+          state: '',
+          postal_code: '',
+          zip_code: ''
         },
-        Tags: 'binti-events|booking'
+        branch: 'Binti Events'
       };
 
       console.log('[PESAPAL] Order payload:', JSON.stringify(payload, null, 2));
@@ -202,31 +267,34 @@ class PesapalService {
         url: this.orderUrl,
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         data: payload,
         timeout: 15000
       });
 
-      console.log('[PESAPAL] Order creation response:', JSON.stringify(response.data, null, 2));
-      console.log('[PESAPAL] Response keys:', Object.keys(response.data || {}));
+      const responseData = this.normalizeResponseData(response.data);
+
+      console.log('[PESAPAL] Order creation response:', JSON.stringify(responseData, null, 2));
+      console.log('[PESAPAL] Response keys:', Object.keys(responseData || {}));
 
       // Try both possible field names for iframe URL
-      const iframeUrl = response.data?.redirect_url || response.data?.iframe_url || response.data?.payment_url;
-      const trackingId = response.data?.order_tracking_id || response.data?.tracking_id || orderRef;
+      const iframeUrl = responseData?.redirect_url || responseData?.iframe_url || responseData?.payment_url;
+      const trackingId = responseData?.order_tracking_id || responseData?.tracking_id || orderRef;
 
-      if (response.data && (iframeUrl || response.data.response_code === 0)) {
+      if (responseData && iframeUrl) {
         return {
           success: true,
           iframe_url: iframeUrl,
           orderTrackingId: trackingId,
-          responseCode: response.data.response_code,
-          responseDescription: response.data.response_description,
-          fullResponse: response.data
+          responseCode: responseData.status || responseData.response_code,
+          responseDescription: responseData.message || responseData.response_description,
+          fullResponse: responseData
         };
       } else {
-        console.error('[PESAPAL] Unexpected response structure:', response.data);
-        throw new Error('Invalid Pesapal response - missing iframe URL. Response: ' + JSON.stringify(response.data));
+        console.error('[PESAPAL] Unexpected response structure:', responseData);
+        throw new Error('Invalid Pesapal response - missing iframe URL. Response: ' + JSON.stringify(responseData));
       }
     } catch (error) {
       console.error('[PESAPAL] Order creation failed:', error.message);
@@ -250,22 +318,25 @@ class PesapalService {
         url: `${this.statusUrl}?orderTrackingId=${orderTrackingId}`,
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         timeout: 10000
       });
 
-      console.log('[PESAPAL] Transaction status response:', response.data);
+      const responseData = this.normalizeResponseData(response.data);
+
+      console.log('[PESAPAL] Transaction status response:', responseData);
 
       return {
         success: true,
-        orderTrackingId: response.data.order_tracking_id,
-        status: response.data.status,
-        statusCode: response.data.status_code,
-        paymentMethod: response.data.payment_method,
-        amount: response.data.amount,
-        currency: response.data.currency,
-        description: response.data.description
+        orderTrackingId: responseData.order_tracking_id,
+        status: responseData.payment_status_description || responseData.status || responseData.status_code,
+        statusCode: responseData.status_code,
+        paymentMethod: responseData.payment_method,
+        amount: responseData.amount,
+        currency: responseData.currency,
+        description: responseData.description
       };
     } catch (error) {
       console.error('[PESAPAL] Status query failed:', error.message);
