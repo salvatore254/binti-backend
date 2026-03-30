@@ -54,6 +54,14 @@ const getExpectedDepositAmount = (booking) => {
 
 const amountsMatch = (actual, expected) => Math.round(Number(actual)) === Math.round(Number(expected));
 
+const buildPesapalOrderRef = (bookingId) => {
+  const bookingRef = String(bookingId || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .slice(-16);
+  const suffix = uuidv4().replace(/-/g, '').slice(0, 8);
+  return `ORD_${bookingRef}_${suffix}`;
+};
+
 const getPesapalCallbackPayload = (req) => ({
   ...(req.query || {}),
   ...(req.body || {}),
@@ -186,7 +194,7 @@ router.post("/pesapal", async (req, res) => {
     }
 
     const expectedAmount = getExpectedDepositAmount(booking);
-    const orderRef = `ORDER_${booking._id}_${uuidv4().substring(0, 8)}`;
+    const orderRef = buildPesapalOrderRef(booking._id);
     const [firstName = 'Customer', ...restOfName] = String(booking.fullname || 'Customer Name').split(' ');
     const lastName = restOfName.join(' ') || 'Name';
 

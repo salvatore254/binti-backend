@@ -24,6 +24,14 @@ const createHttpError = (message, statusCode = 400) => {
   return error;
 };
 
+const buildPesapalOrderRef = (bookingId) => {
+  const bookingRef = String(bookingId || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .slice(-16);
+  const suffix = uuidv4().replace(/-/g, '').slice(0, 8);
+  return `ORD_${bookingRef}_${suffix}`;
+};
+
 const normalizeBoolean = (value) => value === true || value === "yes";
 
 const calculateBookingPricing = (payload) => {
@@ -561,8 +569,7 @@ router.get("/pesapal-iframe", async (req, res) => {
     });
 
     // Initialize Pesapal payment with booking details
-    const { v4: uuidv4 } = require("uuid");
-    const orderRef = `ORDER_${bookingId}_${uuidv4().substr(0, 8)}`;
+    const orderRef = buildPesapalOrderRef(bookingId);
 
     // Initialize payment service
     const useMockPesapal = process.env.USE_PESAPAL_MOCK === 'true';

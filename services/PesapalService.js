@@ -8,6 +8,22 @@ const axios = require("axios");
  */
 
 class PesapalService {
+  normalizePhoneNumber(phone) {
+    return String(phone || '').replace(/[^0-9]/g, '');
+  }
+
+  normalizeMerchantReference(orderRef) {
+    const sanitized = String(orderRef || '')
+      .replace(/[^A-Za-z0-9._:-]/g, '_')
+      .slice(0, 50);
+
+    if (!sanitized) {
+      throw new Error('Pesapal order reference is required');
+    }
+
+    return sanitized;
+  }
+
   normalizeResponseData(data) {
     if (Buffer.isBuffer(data)) {
       const text = data.toString('utf8');
@@ -222,12 +238,16 @@ class PesapalService {
         throw new Error('Missing required fields: amount, orderRef, email');
       }
 
+      const normalizedOrderRef = this.normalizeMerchantReference(orderRef);
+      const normalizedPhone = this.normalizePhoneNumber(phone);
+      const normalizedDescription = String(description || 'Binti Events Booking').slice(0, 100);
+
       console.log('[PESAPAL] Creating payment order:', {
         amount,
         currency,
-        orderRef,
+        orderRef: normalizedOrderRef,
         email,
-        phone
+        phone: normalizedPhone
       });
 
       // Get access token
@@ -236,16 +256,16 @@ class PesapalService {
 
       // Prepare order request payload
       const payload = {
-        id: orderRef,
+        id: normalizedOrderRef,
         currency,
         amount: parseFloat(amount),
-        description: description || 'Binti Events Booking',
+        description: normalizedDescription,
         callback_url: this.redirectUrl,
         redirect_mode: 'PARENT_WINDOW',
         notification_id: notificationId,
         billing_address: {
           email_address: email,
-          phone_number: phone || '',
+          phone_number: normalizedPhone,
           country_code: 'KE',
           first_name: firstName,
           last_name: lastName,
