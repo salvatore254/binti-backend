@@ -21,7 +21,7 @@ class InvoiceService {
       email: 'bintievents@gmail.com',
       website: 'www.bintievents.com',
     };
-    this.logoUrl = 'https://bintievents.vercel.app/images/invoicelogo1.jpg';
+    this.logoUrl = 'https://bintievents.vercel.app/images/invoicelogo.jpg';
     this._logoBase64 = null;
   }
 
@@ -276,15 +276,31 @@ class InvoiceService {
 
     y += 14;
 
-    // ─── SOCIAL LINKS footer ───
-    doc.setDrawColor(...lightGray);
-    doc.line(margin, y, margin + contentWidth, y);
-    y += 6;
+    // ─── THANK YOU section ───
+    // Pink decorative "thank you" with heart
+    doc.setTextColor(255, 130, 171); // pink
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(22);
+    doc.text('thank you', pageWidth / 2, y, { align: 'center' });
 
-    doc.setFont('helvetica', 'normal');
+    // Heart symbol above the "y"
+    doc.setFontSize(10);
+    doc.setTextColor(255, 80, 120); // deeper pink for hearts
+    doc.text('\u2665', pageWidth / 2 + 18, y - 8, { align: 'center' });
+    doc.setFontSize(7);
+    doc.text('\u2665', pageWidth / 2 + 24, y - 5, { align: 'center' });
+
+    y += 7;
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text('FOR YOUR ORDER', pageWidth / 2, y, { align: 'center' });
+
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
     doc.setTextColor(...gray);
-    doc.text("Let's get social  @bintievents", pageWidth / 2, y, { align: 'center' });
+    doc.text("Let's get social @bintievents", pageWidth / 2, y, { align: 'center' });
     y += 5;
 
     doc.setFontSize(7);
