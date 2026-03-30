@@ -42,6 +42,10 @@ class PesapalService {
    */
   async getAccessToken() {
     try {
+      if (!this.consumerKey || !this.consumerSecret) {
+        throw new Error('Pesapal credentials are missing. Set PESAPAL_CONSUMER_KEY and PESAPAL_CONSUMER_SECRET.');
+      }
+
       // Return cached token if still valid
       if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
         console.log('[PESAPAL] Using cached access token');
@@ -59,7 +63,8 @@ class PesapalService {
           consumer_secret: this.consumerSecret
         },
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         timeout: 10000
       });
@@ -71,6 +76,11 @@ class PesapalService {
         console.log('[PESAPAL] Access token obtained successfully');
         return this.accessToken;
       } else {
+        const apiErrorMessage = response.data?.error?.message || response.data?.message;
+        if (apiErrorMessage) {
+          throw new Error(`Pesapal token request rejected: ${apiErrorMessage}`);
+        }
+
         throw new Error('No access token in response');
       }
     } catch (error) {
