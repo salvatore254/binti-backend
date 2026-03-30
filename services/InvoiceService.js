@@ -22,7 +22,9 @@ class InvoiceService {
       website: 'www.bintievents.com',
     };
     this.logoUrl = 'https://bintievents.vercel.app/images/invoicelogo.jpg';
+    this.thankYouUrl = 'https://bintievents.vercel.app/images/thankyounote.PNG';
     this._logoBase64 = null;
+    this._thankYouBase64 = null;
   }
 
   /**
@@ -39,6 +41,24 @@ class InvoiceService {
       return this._logoBase64;
     } catch (err) {
       console.warn('[INVOICE] Could not load logo:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch the thank you image and return as base64 data URI
+   */
+  async _loadThankYouImage() {
+    if (this._thankYouBase64) return this._thankYouBase64;
+    try {
+      const response = await fetch(this.thankYouUrl);
+      if (!response.ok) throw new Error(`Thank you image fetch failed: ${response.status}`);
+      const arrayBuffer = await response.arrayBuffer();
+      this._thankYouBase64 = Buffer.from(arrayBuffer).toString('base64');
+      console.log('[INVOICE] Thank you image loaded successfully');
+      return this._thankYouBase64;
+    } catch (err) {
+      console.warn('[INVOICE] Could not load thank you image:', err.message);
       return null;
     }
   }
@@ -73,6 +93,7 @@ class InvoiceService {
 
     // ─── LOGO (left) ───
     const logoBase64 = await this._loadLogo();
+    const thankYouBase64 = await this._loadThankYouImage();
     if (logoBase64) {
       try {
         doc.addImage('data:image/png;base64,' + logoBase64, 'PNG', margin, y, 45, 20);
@@ -265,58 +286,43 @@ class InvoiceService {
 
     y += 8;
 
-    // ─── ISSUED BY ───
+    // ─── ISSUED BY + THANK YOU IMAGE ───
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(...black);
     doc.text('Issued by:', pageWidth - margin, y, { align: 'right' });
     y += 5;
     doc.setFont('helvetica', 'bold');
-    doc.text('Binti Events', pageWidth - margin, y, { align: 'right' });
-
-    y += 14;
-
-    // ─── THANK YOU section ───
-    // Pink decorative "thank you" with heart
-    doc.setTextColor(255, 130, 171); // pink
-    doc.setFont('helvetica', 'bolditalic');
-    doc.setFontSize(22);
-    doc.text('thank you', pageWidth / 2, y, { align: 'center' });
-
-    // Heart symbol above the "y"
-    doc.setFontSize(10);
-    doc.setTextColor(255, 80, 120); // deeper pink for hearts
-    doc.text('\u2665', pageWidth / 2 + 18, y - 8, { align: 'center' });
-    doc.setFontSize(7);
-    doc.text('\u2665', pageWidth / 2 + 24, y - 5, { align: 'center' });
-
-    y += 7;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text('FOR YOUR ORDER', pageWidth / 2, y, { align: 'center' });
+    doc.text('Binti', pageWidth - margin, y, { align: 'right' });
 
     y += 6;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(...gray);
-    doc.text("Let's get social @bintievents", pageWidth / 2, y, { align: 'center' });
-    y += 5;
 
-    doc.setFontSize(7);
-    doc.setTextColor(120, 81, 169); // purple for links
-    const socialY = y;
-    const socialLinks = [
-      { label: 'Instagram', url: 'https://www.instagram.com/bintievents/' },
-      { label: 'Facebook', url: 'https://www.facebook.com/bintievents/' },
-      { label: 'TikTok', url: 'https://www.tiktok.com/@bintievents' },
-    ];
-    const socialSpacing = 35;
-    const socialStartX = pageWidth / 2 - socialSpacing;
-    socialLinks.forEach((link, i) => {
-      const x = socialStartX + i * socialSpacing;
-      doc.textWithLink(link.label, x, socialY, { url: link.url, align: 'center' });
-    });
+    // Thank you image (centered, matching the quote PDF)
+    if (thankYouBase64) {
+      const imgWidth = 90;
+      const imgHeight = 60;
+      const imgX = (pageWidth - imgWidth) / 2;
+      doc.addImage('data:image/png;base64,' + thankYouBase64, 'PNG', imgX, y, imgWidth, imgHeight);
+      y += imgHeight + 4;
+    } else {
+      // Fallback text if image couldn't load
+      y += 4;
+      doc.setTextColor(255, 130, 171);
+      doc.setFont('helvetica', 'bolditalic');
+      doc.setFontSize(18);
+      doc.text('thank you', pageWidth / 2, y, { align: 'center' });
+      y += 7;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text('FOR YOUR ORDER', pageWidth / 2, y, { align: 'center' });
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...gray);
+      doc.text("Let's get social @bintievents", pageWidth / 2, y, { align: 'center' });
+      y += 8;
+    }
 
     // Return as Buffer
     const arrayBuffer = doc.output('arraybuffer');
