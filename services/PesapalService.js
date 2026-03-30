@@ -21,9 +21,9 @@ class PesapalService {
     const isProduction = process.env.NODE_ENV === 'production' && !useSandbox;
     
     this.apiUrl = process.env.PESAPAL_API_URL || 
-                  (isProduction ? 'https://api.pesapal.com' : 'https://sandbox.pesapal.com');
+            (isProduction ? 'https://pay.pesapal.com/v3' : 'https://cybqa.pesapal.com/pesapalv3');
     
-    this.redirectUrl = process.env.PESAPAL_REDIRECT_URL;
+    this.redirectUrl = process.env.PESAPAL_REDIRECT_URL || process.env.PESAPAL_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/pesapal-callback`;
     
     this.authUrl = `${this.apiUrl}/api/Auth/RequestToken`;
     this.orderUrl = `${this.apiUrl}/api/Transactions/InitiatePayment`;
@@ -92,7 +92,7 @@ class PesapalService {
         console.error('  - Internet connectivity from Render');
         console.error('  - PESAPAL_USE_SANDBOX=true is set in Render Environment (Dashboard)');
         console.error('  - PESAPAL_API_URL environment variable');
-        console.error('  - Pesapal sandbox API status (https://sandbox.pesapal.com might be down)');
+        console.error('  - Pesapal sandbox API status (https://cybqa.pesapal.com/pesapalv3 might be down)');
       }
       
       throw new Error(`Pesapal authentication failed: ${error.message}`);
@@ -242,8 +242,10 @@ class PesapalService {
    */
   validateCallback(callbackData) {
     try {
+      const orderTrackingId = callbackData.OrderTrackingId || callbackData.order_tracking_id || callbackData.orderTrackingId;
+
       // Basic validation - check for required fields
-      if (!callbackData.OrderTrackingId || callbackData.OrderTrackingId === '') {
+      if (!orderTrackingId || orderTrackingId === '') {
         console.warn('[PESAPAL] Invalid callback: missing OrderTrackingId');
         return { valid: false };
       }
@@ -252,10 +254,11 @@ class PesapalService {
       // For now, just validate the structure
       return {
         valid: true,
-        orderTrackingId: callbackData.OrderTrackingId,
-        status: callbackData.Status,
-        amount: callbackData.Amount,
-        currency: callbackData.Currency
+        orderTrackingId,
+        transactionTrackingId: callbackData.TransactionTrackingId || callbackData.merchant_reference || callbackData.pesapal_transaction_tracking_id || null,
+        status: callbackData.Status || callbackData.status || null,
+        amount: callbackData.Amount || callbackData.amount || null,
+        currency: callbackData.Currency || callbackData.currency || null
       };
     } catch (error) {
       console.error('[PESAPAL] Callback validation error:', error.message);

@@ -1,14 +1,12 @@
 // routes/paymentRoutes.js
 const express = require("express");
 const router = express.Router();
-const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 const MpesaService = require("../services/MpesaService");
 const PesapalService = require("../services/PesapalService");
 const PesapalServiceMock = require("../services/PesapalServiceMock");
 const EmailService = require("../services/EmailService");
 const Booking = require("../models/Booking");
-const { mpesaCallback, pesapalCallback } = require("../controllers/paymentController");
 
 // Initialize payment services (production or sandbox based on NODE_ENV)
 const mpesaService = new MpesaService();
@@ -32,6 +30,117 @@ if (useMockPesapal) {
 // Get email service instance lazily when needed
 const getEmailService = () => EmailService();
 
+const testEndpointsEnabled = process.env.ENABLE_TEST_ENDPOINTS === 'true';
+
+const ensureTestEndpointsEnabled = (res) => {
+  if (testEndpointsEnabled) {
+    return true;
+  }
+
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
+  });
+  return false;
+};
+
+const getExpectedDepositAmount = (booking) => {
+  if (Number.isFinite(Number(booking.depositAmount)) && Number(booking.depositAmount) > 0) {
+    return Math.round(Number(booking.depositAmount));
+  }
+
+  return Math.round(Number(booking.totalAmount || 0) * 0.8);
+};
+
+const amountsMatch = (actual, expected) => Math.round(Number(actual)) === Math.round(Number(expected));
+
+const getPesapalCallbackPayload = (req) => ({
+  ...(req.query || {}),
+  ...(req.body || {}),
+});
+
+const handlePesapalCallback = async (req, res) => {
+  try {
+    console.log("[PESAPAL CALLBACK] Callback received from Pesapal");
+    const callbackPayload = getPesapalCallbackPayload(req);
+    console.log("[PESAPAL CALLBACK] Payload:", JSON.stringify(callbackPayload, null, 2));
+
+    const validation = pesapalService.validateCallback(callbackPayload);
+
+    if (!validation.valid) {
+      console.warn("[PESAPAL CALLBACK] Invalid callback");
+      return res.status(400).json({ success: false, message: 'Invalid callback' });
+    }
+
+    console.log("[PESAPAL CALLBACK] Parsed callback:", validation);
+
+    const booking = await Booking.findOne({ pesapalOrderTrackingId: validation.orderTrackingId });
+
+    if (!booking) {
+      console.warn("[PESAPAL CALLBACK] No booking found for", validation.orderTrackingId);
+      return res.sendStatus(200);
+    }
+
+    const statusCheck = await pesapalService.getTransactionStatus(validation.orderTrackingId);
+    console.log("[PESAPAL CALLBACK] Payment status:", statusCheck.status);
+
+    if (statusCheck.status !== 'COMPLETED') {
+      console.warn("[PESAPAL CALLBACK] Payment not completed. Status:", statusCheck.status);
+      return res.sendStatus(200);
+    }
+
+    const expectedAmount = getExpectedDepositAmount(booking);
+    if (!amountsMatch(statusCheck.amount, expectedAmount)) {
+      booking.status = 'payment_failed';
+      booking.paymentFailureReason = 'Pesapal callback amount mismatch';
+      booking.lastPaymentError = `Expected ${expectedAmount} but received ${statusCheck.amount}`;
+      booking.lastPaymentAttempt = new Date();
+      booking.updatedAt = new Date();
+      await booking.save();
+      console.error("[PESAPAL CALLBACK] Amount mismatch for booking", booking._id);
+      return res.sendStatus(200);
+    }
+
+    booking.status = 'paid';
+    booking.paymentMethod = 'pesapal';
+    booking.transactionId = validation.transactionTrackingId || validation.orderTrackingId;
+    booking.updatedAt = new Date();
+    await booking.save();
+
+    try {
+      console.log("[PESAPAL CALLBACK] Sending confirmation email to", booking.email);
+      const emailService = getEmailService();
+      const emailResult = await emailService.sendPaymentConfirmation(booking, booking.transactionId);
+
+      if (emailResult.success) {
+        console.log("[PESAPAL CALLBACK] Confirmation email sent successfully");
+      } else {
+        console.warn("[PESAPAL CALLBACK] Email sending failed:", emailResult.error);
+      }
+    } catch (emailError) {
+      console.error("[PESAPAL CALLBACK] Error sending confirmation email:", emailError.message);
+    }
+
+    try {
+      const InvoiceService = require('../services/InvoiceService');
+      const invoiceService = new InvoiceService();
+      const invoiceSent = await invoiceService.sendInvoice(booking);
+      if (invoiceSent) {
+        booking.invoiceSent = true;
+        booking.invoiceSentAt = new Date();
+        await booking.save();
+      }
+    } catch (invoiceErr) {
+      console.error("[PESAPAL CALLBACK] Invoice error:", invoiceErr.message);
+    }
+
+    return res.sendStatus(200);
+  } catch (error) {
+    console.error("[PESAPAL CALLBACK] Error processing callback:", error.message);
+    return res.sendStatus(200);
+  }
+};
+
 /**
  * In-memory cache for booking data
  * Stores booking details temporarily when payment is initiated
@@ -54,66 +163,51 @@ const bookingCache = {};
  */
 router.post("/pesapal", async (req, res) => {
   try {
-    const { amount, email, phone, firstName = 'Customer', lastName = 'Name', orderRef, description } = req.body;
+    const { bookingId: rawBookingId, orderRef: rawOrderRef, description } = req.body;
+    const bookingId = rawBookingId || rawOrderRef;
     
     console.log(`[PAYMENT] Pesapal payment initiation:`, {
-      amount,
-      email,
-      phone,
-      orderRef
+      bookingId,
     });
 
-    // Validate required fields
-    if (!amount || !email || !orderRef) {
+    if (!bookingId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: amount, email, orderRef"
+        message: "Missing required field: bookingId"
       });
     }
 
-    if (isNaN(amount) || amount <= 0 || amount > 999999) {
-      return res.status(400).json({
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({
         success: false,
-        message: "Invalid amount (must be between 1 and 999999 KES)"
+        message: "Booking not found"
       });
     }
+
+    const expectedAmount = getExpectedDepositAmount(booking);
+    const orderRef = `ORDER_${booking._id}_${uuidv4().substring(0, 8)}`;
+    const [firstName = 'Customer', ...restOfName] = String(booking.fullname || 'Customer Name').split(' ');
+    const lastName = restOfName.join(' ') || 'Name';
 
     // Create payment order via Pesapal API
     const result = await pesapalService.createOrder({
-      amount,
+      amount: expectedAmount,
       currency: 'KES',
-      orderRef: orderRef || uuidv4(),
+      orderRef,
       description: description || 'Binti Events Booking',
-      email,
-      phone: phone || '',
+      email: booking.email,
+      phone: booking.phone || '',
       firstName,
       lastName
     });
 
-    // Cache booking data for confirmation email later
-    const bookingData = {
-      id: orderRef,
-      fullname: firstName + ' ' + lastName,
-      email: email,
-      phone: phone || '',
-      venue: '',
-      totalAmount: amount,
-      orderRef: orderRef,
+    await Booking.findByIdAndUpdate(booking._id, {
       paymentMethod: 'pesapal',
-      timestamp: new Date().toISOString()
-    };
-
-    // Store in cache with orderRef as key
-    bookingCache[orderRef] = bookingData;
-    console.log(`[PAYMENT] Booking data cached for ${orderRef}`);
-
-    // Auto-clean cache after 1 hour (payment should complete within this time)
-    setTimeout(() => {
-      if (bookingCache[orderRef]) {
-        delete bookingCache[orderRef];
-        console.log(`[PAYMENT] Cache expired for ${orderRef}`);
-      }
-    }, 60 * 60 * 1000);
+      pesapalOrderRef: orderRef,
+      pesapalOrderTrackingId: result.orderTrackingId,
+      updatedAt: new Date(),
+    });
 
     return res.json({
       success: true,
@@ -148,24 +242,34 @@ router.post("/mpesa", async (req, res) => {
     });
 
     // Validate inputs
-    if (!phone || !amount || !accountRef) {
+    if (!phone || !accountRef) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: phone, amount, accountRef"
+        message: "Missing required fields: phone, accountRef"
       });
     }
 
-    if (isNaN(amount) || amount <= 0) {
+    const booking = await Booking.findById(accountRef);
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found"
+      });
+    }
+
+    const expectedAmount = getExpectedDepositAmount(booking);
+    if (amount !== undefined && !amountsMatch(amount, expectedAmount)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid amount"
+        message: "Payment amount mismatch. Use the booking deposit amount.",
+        expectedAmount,
       });
     }
 
     // Initiate STK push via Daraja API
     const result = await mpesaService.initiateStkPush(
       phone,
-      amount,
+      expectedAmount,
       accountRef,
       description || "Binti Events Booking"
     );
@@ -188,16 +292,16 @@ router.post("/mpesa", async (req, res) => {
     // Cache booking data keyed by checkoutRequestId (NOT accountRef)
     // This is used when callback comes back to send confirmation emails
     const bookingData = {
-      _id: accountRef,
-      id: accountRef,
-      fullname: req.body.fullName || req.body.fullname || 'Guest',
-      email: req.body.email || '',
-      phone: req.body.phone || '',
-      venue: req.body.venue || '',
-      eventDate: req.body.eventDate || '',
-      setupTime: req.body.setupTime || '',
-      tentType: req.body.tentType || req.body.bookingType || 'Package + Tent',
-      totalAmount: amount,
+      _id: booking._id,
+      id: booking._id,
+      fullname: booking.fullname || 'Guest',
+      email: booking.email || '',
+      phone: booking.phone || phone,
+      venue: booking.venue || '',
+      eventDate: booking.eventDate || '',
+      setupTime: booking.setupTime || '',
+      tentType: booking.tentType || req.body.bookingType || 'Package + Tent',
+      totalAmount: booking.totalAmount,
       mpesaPhone: phone,
       accountRef: accountRef,
       checkoutRequestId: result.checkoutRequestId,
@@ -248,96 +352,8 @@ router.post("/mpesa", async (req, res) => {
  * Pesapal will POST transaction results here after payment processing
  * Verifies payment status, updates database, and sends confirmation
  */
-router.post("/pesapal-callback", async (req, res) => {
-  try {
-    console.log("[PESAPAL CALLBACK] Callback received from Pesapal");
-    console.log("[PESAPAL CALLBACK] Body:", JSON.stringify(req.body, null, 2));
-
-    // Validate the callback
-    const validation = pesapalService.validateCallback(req.body);
-    
-    if (!validation.valid) {
-      console.warn("[PESAPAL CALLBACK] Invalid callback");
-      return res.status(400).json({ success: false, message: 'Invalid callback' });
-    }
-
-    console.log("[PESAPAL CALLBACK] Parsed callback:", validation);
-
-    // Retrieve cached booking data using orderTrackingId
-    const cachedBooking = bookingCache[validation.orderTrackingId];
-    
-    if (cachedBooking) {
-      console.log("[PESAPAL CALLBACK] Found cached booking data for", cachedBooking.fullname);
-      
-      // Check payment status from Pesapal
-      try {
-        const statusCheck = await pesapalService.getTransactionStatus(validation.orderTrackingId);
-        
-        if (statusCheck.status === 'COMPLETED' || statusCheck.status === 'PENDING') {
-          console.log("[PESAPAL CALLBACK]  Payment status:", statusCheck.status);
-          
-          // Update database with payment confirmation (use controller function)
-          try {
-            // Prepare request/response objects for controller function
-            const mockReq = {
-              query: {
-                order_tracking_id: cachedBooking.id || validation.orderTrackingId,
-                pesapal_transaction_tracking_id: validation.transactionTrackingId || `pesapal-${validation.orderTrackingId}`
-              }
-            };
-            const mockRes = {
-              status: (code) => ({
-                json: (data) => {
-                  console.log(`[PESAPAL CALLBACK] Database update response: ${code}`, data);
-                  return this;
-                }
-              }),
-              sendStatus: (code) => console.log(`[PESAPAL CALLBACK] Database update sent status: ${code}`)
-            };
-            
-            // Call controller function to update database
-            await pesapalCallback(mockReq, mockRes);
-            console.log("[PESAPAL CALLBACK]  Database updated via controller");
-          } catch (dbError) {
-            console.error("[PESAPAL CALLBACK]  Error updating database:", dbError.message);
-          }
-          
-          // Send confirmation email
-          try {
-            console.log("[PESAPAL CALLBACK] Sending confirmation email to", cachedBooking.email);
-            const emailService = getEmailService();
-            const emailResult = await emailService.sendPaymentConfirmation(cachedBooking, validation.orderTrackingId);
-            
-            if (emailResult.success) {
-              console.log("[PESAPAL CALLBACK]  Confirmation email sent successfully");
-            } else {
-              console.warn("[PESAPAL CALLBACK]  Email sending failed:", emailResult.error);
-            }
-          } catch (emailError) {
-            console.error("[PESAPAL CALLBACK]  Error sending confirmation email:", emailError.message);
-          }
-          
-          // Remove from cache after processing
-          delete bookingCache[validation.orderTrackingId];
-          console.log("[PESAPAL CALLBACK]  Booking data cleared from cache");
-        } else {
-          console.warn("[PESAPAL CALLBACK]  Payment not completed. Status:", statusCheck.status);
-        }
-      } catch (statusError) {
-        console.error("[PESAPAL CALLBACK]  Failed to check payment status:", statusError.message);
-      }
-    } else {
-      console.warn("[PESAPAL CALLBACK]  No cached booking found for", validation.orderTrackingId);
-      console.warn("[PESAPAL CALLBACK]  Available cache keys:", Object.keys(bookingCache));
-    }
-
-    // Always respond 200 OK to Pesapal (acknowledges receipt)
-    res.sendStatus(200);
-  } catch (error) {
-    console.error("[PESAPAL CALLBACK] Error processing callback:", error.message);
-    res.sendStatus(200); // Still respond 200 to avoid retry loop
-  }
-});
+router.post("/pesapal-callback", handlePesapalCallback);
+router.get("/pesapal-callback", handlePesapalCallback);
 
 /**
  * Mpesa callback endpoint for STK Push / transaction result
@@ -392,6 +408,20 @@ router.post("/mpesa-callback", async (req, res) => {
       console.log("[MPESA CALLBACK] Payment successful!");
       console.log("[MPESA CALLBACK] Receipt:", callbackData.mpesaReceiptNumber);
       console.log("[MPESA CALLBACK] Amount:", callbackData.amount);
+
+      const expectedAmount = getExpectedDepositAmount(booking);
+      if (!amountsMatch(callbackData.amount, expectedAmount)) {
+        booking.status = 'payment_failed';
+        booking.paymentFailureReason = 'M-Pesa callback amount mismatch';
+        booking.paymentFailureCode = callbackData.resultCode;
+        booking.lastPaymentAttempt = new Date();
+        booking.lastPaymentError = `Expected ${expectedAmount} but received ${callbackData.amount}`;
+        booking.updatedAt = new Date();
+        await booking.save();
+        console.error("[MPESA CALLBACK] Amount mismatch for booking", booking._id);
+        delete bookingCache[checkoutRequestId];
+        return res.sendStatus(200);
+      }
 
       booking.status = 'paid';
       booking.paymentMethod = 'mpesa';
@@ -468,6 +498,10 @@ router.post("/mpesa-callback", async (req, res) => {
  * Useful for debugging MPESA_USE_SANDBOX and credential issues
  */
 router.get("/test/mpesa-auth", async (req, res) => {
+  if (!ensureTestEndpointsEnabled(res)) {
+    return;
+  }
+
   try {
     console.log("[TEST] M-Pesa OAuth Test");
     console.log("[TEST] Environment:", {
@@ -518,6 +552,10 @@ router.get("/test/mpesa-auth", async (req, res) => {
  * Body: { phone, amount } (e.g. { "phone": "254712345678", "amount": 1 })
  */
 router.post("/test/mpesa-stk", async (req, res) => {
+  if (!ensureTestEndpointsEnabled(res)) {
+    return;
+  }
+
   try {
     const { phone, amount = 1 } = req.body;
 
@@ -579,6 +617,10 @@ router.post("/test/mpesa-stk", async (req, res) => {
  * Body: { bookingId }
  */
 router.post("/test/simulate-success", async (req, res) => {
+  if (!ensureTestEndpointsEnabled(res)) {
+    return;
+  }
+
   try {
     const { bookingId } = req.body;
     if (!bookingId) {

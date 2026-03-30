@@ -45,15 +45,15 @@ PORT=5000
 MONGODB_URI=<your-mongodb-atlas-url>
 PESAPAL_CONSUMER_KEY=<your-pesapal-key>
 PESAPAL_CONSUMER_SECRET=<your-pesapal-secret>
-PESAPAL_API_URL=https://sandbox.pesapal.com
-PESAPAL_CALLBACK_URL=https://<your-render-domain>/api/payments/pesapal/callback
+PESAPAL_API_URL=https://cybqa.pesapal.com/pesapalv3
+PESAPAL_REDIRECT_URL=https://<your-render-domain>/api/payments/pesapal-callback
 USE_PESAPAL_MOCK=false
 MPESA_CONSUMER_KEY=<your-mpesa-key>
 MPESA_CONSUMER_SECRET=<your-mpesa-secret>
-MPESA_CALLBACK_URL=https://<your-render-domain>/api/payments/mpesa/callback
+MPESA_CALLBACK_URL=https://<your-render-domain>/api/payments/mpesa-callback
 MPESA_PASSKEY=<your-mpesa-passkey>
-EMAIL_USER=<your-gmail-address>
-EMAIL_PASSWORD=<your-gmail-app-password>
+RESEND_API_KEY=<your-resend-api-key>
+EMAIL_FROM=Binti Events <onboarding@resend.dev>
 BACKEND_URL=https://<your-render-domain>
 FRONTEND_URL=https://bintievents.vercel.app
 ```
@@ -77,8 +77,8 @@ REACT_APP_API_URL=https://<your-render-domain>
 
 #### Payment Callbacks
 Make sure all callback URLs are updated in:
-- **Pesapal Dashboard**: Update Webhook URL to `https://<your-render-domain>/api/payments/pesapal/callback`
-- **M-Pesa Console**: Update CB URL to `https://<your-render-domain>/api/payments/mpesa/callback`
+- **Pesapal Dashboard**: Update redirect/IPN URL to `https://<your-render-domain>/api/payments/pesapal-callback`
+- **M-Pesa Console**: Update callback URL to `https://<your-render-domain>/api/payments/mpesa-callback`
 
 #### Email Notifications
 Ensure Gmail account has "Less secure app access" enabled or use an App Password for SMTP.
@@ -154,7 +154,7 @@ When you need more performance:
 | Backend | Deployed | https://<your-render-domain> |
 | Frontend | Deployed | https://bintievents.vercel.app |
 | Database | MongoDB Atlas | - |
-| Payment Gateway | Pesapal Sandbox | https://sandbox.pesapal.com |
+| Payment Gateway | Pesapal Sandbox | https://cybqa.pesapal.com/pesapalv3 |
 | M-Pesa | Sandbox | - |
 
 ## Support

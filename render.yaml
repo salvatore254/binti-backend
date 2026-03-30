@@ -11,7 +11,7 @@ services:
       - key: PORT
         value: "5000"
       - key: PESAPAL_API_URL
-        value: https://sandbox.pesapal.com
+        value: https://cybqa.pesapal.com/pesapalv3
       - key: USE_PESAPAL_MOCK
         value: "false"
       - key: PESAPAL_USE_SANDBOX
@@ -24,8 +24,8 @@ services:
         value: ${PESAPAL_CONSUMER_KEY}
       - key: PESAPAL_CONSUMER_SECRET
         value: ${PESAPAL_CONSUMER_SECRET}
-      - key: PESAPAL_CALLBACK_URL
-        value: ${PESAPAL_CALLBACK_URL}
+      - key: PESAPAL_REDIRECT_URL
+        value: ${PESAPAL_REDIRECT_URL}
       - key: MPESA_CONSUMER_KEY
         value: ${MPESA_CONSUMER_KEY}
       - key: MPESA_CONSUMER_SECRET

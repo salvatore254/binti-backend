@@ -33,6 +33,7 @@ class MpesaService {
     
     this.oauthUrl = `${this.baseUrl}/oauth/v1/generate`;
     this.stkUrl = `${this.baseUrl}/mpesa/stkpush/v1/processrequest`;
+    this.callbackUrl = process.env.MPESA_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/mpesa-callback`;
     this.accessToken = null;
     this.tokenExpiry = null;
     
@@ -148,7 +149,7 @@ class MpesaService {
         PartyA: normalizedPhone,
         PartyB: this.shortcode,
         PhoneNumber: normalizedPhone,
-        CallBackURL: `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/mpesa-callback`,
+        CallBackURL: this.callbackUrl,
         AccountReference: accountRef.toString().substring(0, 12), // Max 12 characters
         TransactionDesc: description.substring(0, 40) // Max 40 characters
       };

@@ -28,6 +28,7 @@ process.on('uncaughtException', (error) => {
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const testEndpointsEnabled = process.env.ENABLE_TEST_ENDPOINTS === 'true';
 
 // DEBUG: Log every incoming request
 app.use((req, res, next) => {
@@ -47,18 +48,22 @@ const whitelist = [
   'http://127.0.0.1:8000'
 ];
 
+const resolveAllowedOrigin = (origin) => {
+  if (!origin) {
+    return null;
+  }
+
+  return whitelist.includes(origin) ? origin : null;
+};
+
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, curl requests)
     if (!origin) {
       console.log('[CORS] No origin header - allowing request');
       callback(null, true);
-    } else if (whitelist.includes(origin)) {
+    } else if (resolveAllowedOrigin(origin)) {
       console.log(`[CORS] Origin allowed: ${origin}`);
-      callback(null, true);
-    } else if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-      // Always allow localhost for local development testing
-      console.log(`[CORS] Localhost origin allowed: ${origin}`);
       callback(null, true);
     } else {
       console.log(`[CORS] Origin rejected: ${origin}`);
@@ -99,6 +104,10 @@ app.get("/api/health", (req, res) => {
 
 // Test email endpoint (development only)
 app.post("/api/test-email", async (req, res) => {
+  if (!testEndpointsEnabled) {
+    return res.status(404).json({ success: false, message: "Route not found" });
+  }
+
   try {
     const { email, testType = 'booking' } = req.body;
     
@@ -206,6 +215,7 @@ app.use((req, res, next) => {
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   const origin = req.get('Origin');
+  const allowedOrigin = resolveAllowedOrigin(origin);
   
   console.error(`[ERROR] ${req.method} ${req.path}:`, {
     message: err.message,
@@ -213,9 +223,10 @@ app.use((err, req, res, next) => {
     stack: err.stack
   });
   
-  // ALWAYS set CORS headers on error responses
-  res.set('Access-Control-Allow-Origin', origin ? origin : '*');
-  res.set('Access-Control-Allow-Credentials', 'true');
+  if (allowedOrigin) {
+    res.set('Access-Control-Allow-Origin', allowedOrigin);
+    res.set('Access-Control-Allow-Credentials', 'true');
+  }
   res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept');
   
@@ -242,14 +253,18 @@ const initializeServer = async () => {
       logger.error('MongoDB connection failed: ' + dbErr.message);
     }
     
-    // Verify SMTP is configured
-    const emailUser = process.env.EMAIL_USER;
-    const emailPass = process.env.EMAIL_PASS;
-    if (emailUser && emailPass) {
-      console.log('[EMAIL] SMTP configured - Emails enabled');
+    // Verify Resend is configured
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (resendApiKey) {
+      console.log('[EMAIL] Resend configured - Emails enabled');
     } else {
-      console.log('[EMAIL] SMTP not configured - Emails will not be sent');
-      console.log('[EMAIL] Set EMAIL_USER and EMAIL_PASS in .env to enable');
+      console.log('[EMAIL] Resend not configured - Emails will not be sent');
+      console.log('[EMAIL] Set RESEND_API_KEY in .env to enable');
+    }
+
+    if (!adminEmail) {
+      console.log('[EMAIL] ADMIN_EMAIL not configured - Admin notifications are disabled');
     }
 
     // Verify WhatsApp is configured via Africa's Talking
