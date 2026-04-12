@@ -8,6 +8,7 @@
 const EmailService = require('./EmailService');
 const logger = require('../utils/logger');
 const { jsPDF } = require('jspdf');
+const { buildInvoiceReference } = require('../utils/referenceFormatter');
 
 class InvoiceService {
   constructor() {
@@ -25,6 +26,28 @@ class InvoiceService {
     this.thankYouUrl = 'https://bintievents.vercel.app/images/thankyounote.PNG';
     this._logoBase64 = null;
     this._thankYouBase64 = null;
+  }
+
+  getPaymentSummary(booking) {
+    const totalAmount = Math.round(Number(booking.totalAmount || 0));
+    const paidAmount = Number.isFinite(Number(booking.paidAmount)) && Number(booking.paidAmount) > 0
+      ? Math.round(Number(booking.paidAmount))
+      : (Number.isFinite(Number(booking.depositAmount)) && Number(booking.depositAmount) > 0
+          ? Math.round(Number(booking.depositAmount))
+          : Math.round(totalAmount * 0.8));
+    const remainingAmount = Number.isFinite(Number(booking.remainingAmount))
+      ? Math.max(Math.round(Number(booking.remainingAmount)), 0)
+      : Math.max(totalAmount - paidAmount, 0);
+
+    return {
+      totalAmount,
+      paidAmount,
+      remainingAmount,
+      isFullyPaid: remainingAmount === 0,
+      paidLabel: remainingAmount === 0 ? 'Full Payment Received' : 'Deposit Paid',
+      remainingLabel: remainingAmount === 0 ? 'Balance Due' : 'Remaining Balance',
+      paymentStatusLabel: remainingAmount === 0 ? 'FULLY PAID' : 'PARTIALLY PAID',
+    };
   }
 
   /**
@@ -69,8 +92,10 @@ class InvoiceService {
   async generateInvoicePDF(booking) {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const pageWidth = 210;
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 20;
     const contentWidth = pageWidth - margin * 2;
+    const bottomLimit = pageHeight - margin;
 
     // Colors
     const pink = [255, 192, 250];      // #FFC0FA - table header
@@ -86,10 +111,27 @@ class InvoiceService {
       ? new Date(booking.eventDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
       : 'N/A';
 
-    const invoiceNo = (booking._id || '').substring(0, 8).toUpperCase();
+    const invoiceNo = buildInvoiceReference(booking._id || booking.id || '');
     const items = this.generateInvoiceItems(booking);
+    const paymentSummary = this.getPaymentSummary(booking);
 
     let y = margin;
+    const ensurePageSpace = (requiredHeight, options = {}) => {
+      if (y + requiredHeight <= bottomLimit) {
+        return;
+      }
+
+      doc.addPage();
+      y = margin;
+
+      if (options.repeatTableHeader) {
+        drawTableHeader();
+        y += 8;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...black);
+      }
+    };
 
     // ─── LOGO (left) ───
     const logoBase64 = await this._loadLogo();
@@ -168,12 +210,12 @@ class InvoiceService {
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...black);
-    doc.text('INV-' + invoiceNo, valueX, y, { align: 'right' });
+    doc.text(invoiceNo, valueX, y, { align: 'right' });
     doc.text(invoiceDate, valueX, y + 6, { align: 'right' });
 
-    // "PAID" in green
+    // Payment status in green
     doc.setTextColor(76, 175, 80);
-    doc.text('PAID', valueX, y + 12, { align: 'right' });
+    doc.text(paymentSummary.paymentStatusLabel, valueX, y + 12, { align: 'right' });
 
     y += 24;
 
@@ -202,17 +244,20 @@ class InvoiceService {
     const colWidths = [contentWidth * 0.42, contentWidth * 0.16, contentWidth * 0.21, contentWidth * 0.21];
     const colX = [margin, margin + colWidths[0], margin + colWidths[0] + colWidths[1], margin + colWidths[0] + colWidths[1] + colWidths[2]];
 
-    // Table header (pink background)
-    doc.setFillColor(...pink);
-    doc.rect(margin, y, contentWidth, 8, 'F');
+    const drawTableHeader = () => {
+      doc.setFillColor(...pink);
+      doc.rect(margin, y, contentWidth, 8, 'F');
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(...black);
-    doc.text('DESCRIPTION', colX[0] + 2, y + 5.5);
-    doc.text('QUANTITY', colX[1] + colWidths[1] / 2, y + 5.5, { align: 'center' });
-    doc.text('UNIT PRICE (KSH)', colX[2] + colWidths[2] - 2, y + 5.5, { align: 'right' });
-    doc.text('AMOUNT (KSH)', colX[3] + colWidths[3] - 2, y + 5.5, { align: 'right' });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(...black);
+      doc.text('DESCRIPTION', colX[0] + 2, y + 5.5);
+      doc.text('QUANTITY', colX[1] + colWidths[1] / 2, y + 5.5, { align: 'center' });
+      doc.text('UNIT PRICE (KSH)', colX[2] + colWidths[2] - 2, y + 5.5, { align: 'right' });
+      doc.text('AMOUNT (KSH)', colX[3] + colWidths[3] - 2, y + 5.5, { align: 'right' });
+    };
+
+    drawTableHeader();
 
     y += 8;
 
@@ -222,16 +267,22 @@ class InvoiceService {
     doc.setTextColor(...black);
 
     items.forEach(item => {
-      // Row border
+      const descriptionLines = doc.splitTextToSize(item.description, colWidths[0] - 4);
+      const rowHeight = Math.max(8, descriptionLines.length * 3.5 + 3);
+      const textY = y + 4.5;
+      const valueY = y + rowHeight / 2 + 1;
+
+      ensurePageSpace(rowHeight + 2, { repeatTableHeader: true });
+
       doc.setDrawColor(...lightGray);
-      doc.line(margin, y + 7, margin + contentWidth, y + 7);
+      doc.line(margin, y + rowHeight, margin + contentWidth, y + rowHeight);
 
-      doc.text(item.description, colX[0] + 2, y + 5);
-      doc.text(String(item.quantity), colX[1] + colWidths[1] / 2, y + 5, { align: 'center' });
-      doc.text(this.formatAmount(item.unitPrice), colX[2] + colWidths[2] - 2, y + 5, { align: 'right' });
-      doc.text(this.formatAmount(item.amount), colX[3] + colWidths[3] - 2, y + 5, { align: 'right' });
+      doc.text(descriptionLines, colX[0] + 2, textY);
+      doc.text(String(item.quantity), colX[1] + colWidths[1] / 2, valueY, { align: 'center' });
+      doc.text(this.formatAmount(item.unitPrice), colX[2] + colWidths[2] - 2, valueY, { align: 'right' });
+      doc.text(this.formatAmount(item.amount), colX[3] + colWidths[3] - 2, valueY, { align: 'right' });
 
-      y += 8;
+      y += rowHeight;
     });
 
     // Bottom border of table
@@ -239,13 +290,14 @@ class InvoiceService {
     doc.line(margin, y, margin + contentWidth, y);
 
     y += 5;
+    ensurePageSpace(18);
 
     // ─── TOTAL row ───
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(...black);
     doc.text('TOTAL (KES):', colX[2] + colWidths[2] - 2, y + 2, { align: 'right' });
-    doc.text('KSh' + this.formatAmount(booking.totalAmount), colX[3] + colWidths[3] - 2, y + 2, { align: 'right' });
+    doc.text('KSh' + this.formatAmount(paymentSummary.totalAmount), colX[3] + colWidths[3] - 2, y + 2, { align: 'right' });
 
     y += 4;
 
@@ -253,13 +305,16 @@ class InvoiceService {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...gray);
-    const depositPaid = Math.round(booking.totalAmount * 0.8);
-    const balanceDue = booking.totalAmount - depositPaid;
-    doc.text(`Deposit Paid (80%): KES ${depositPaid.toLocaleString()}   |   Balance Due (20%): KES ${balanceDue.toLocaleString()}`, margin, y + 4);
+    const depositLines = doc.splitTextToSize(
+      `${paymentSummary.paidLabel}: KES ${paymentSummary.paidAmount.toLocaleString()}   |   ${paymentSummary.remainingLabel}: KES ${paymentSummary.remainingAmount.toLocaleString()}`,
+      contentWidth
+    );
+    doc.text(depositLines, margin, y + 4);
 
-    y += 14;
+    y += 8 + depositLines.length * 3.5;
 
     // ─── TERMS & CONDITIONS ───
+    ensurePageSpace(12);
     doc.setFont('helvetica', 'bolditalic');
     doc.setFontSize(8);
     doc.setTextColor(...black);
@@ -280,6 +335,7 @@ class InvoiceService {
 
     terms.forEach((term, i) => {
       const lines = doc.splitTextToSize(`${i + 1}. ${term}`, contentWidth);
+      ensurePageSpace(lines.length * 3.5 + 2);
       doc.text(lines, margin, y);
       y += lines.length * 3.5;
     });
@@ -299,12 +355,24 @@ class InvoiceService {
 
     // Thank you image (centered, matching the quote PDF)
     if (thankYouBase64) {
-      const imgWidth = 90;
-      const imgHeight = 60;
+      const imageData = 'data:image/png;base64,' + thankYouBase64;
+      const imageProps = doc.getImageProperties(imageData);
+      const maxImgWidth = 90;
+      const maxImgHeight = 45;
+      const widthScale = maxImgWidth / imageProps.width;
+      const heightScale = maxImgHeight / imageProps.height;
+      const scale = Math.min(widthScale, heightScale);
+      const imgWidth = imageProps.width * scale;
+      const imgHeight = imageProps.height * scale;
+
+      ensurePageSpace(18 + imgHeight);
+
       const imgX = (pageWidth - imgWidth) / 2;
-      doc.addImage('data:image/png;base64,' + thankYouBase64, 'PNG', imgX, y, imgWidth, imgHeight);
+      doc.addImage(imageData, 'PNG', imgX, y, imgWidth, imgHeight);
       y += imgHeight + 4;
     } else {
+      ensurePageSpace(24);
+
       // Fallback text if image couldn't load
       y += 4;
       doc.setTextColor(255, 130, 171);
@@ -534,15 +602,17 @@ class InvoiceService {
       console.log(`[INVOICE] Generating PDF invoice for booking ${booking._id}...`);
 
       const pdfBuffer = await this.generateInvoicePDF(booking);
-      const invoiceNo = (booking._id || '').substring(0, 8).toUpperCase();
-      const pdfFilename = `Invoice_INV-${invoiceNo}.pdf`;
+      const invoiceNo = buildInvoiceReference(booking._id || booking.id || '');
+      const pdfFilename = `Invoice_${invoiceNo}.pdf`;
 
       console.log(`[INVOICE] PDF generated (${pdfBuffer.length} bytes), sending to ${booking.email}...`);
 
+      const paymentSummary = this.getPaymentSummary(booking);
+
       await this.emailService.sendEmailWithAttachment({
         to: booking.email,
-        subject: `Invoice - Binti Events (INV-${invoiceNo})`,
-        html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#333;background:#f5f5f5;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:4px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);"><tr><td style="padding:25px 30px;border-bottom:3px solid #FFC0FA;"><img src="https://bintievents.vercel.app/images/logo1.png" alt="Binti Events" width="120" style="display:block;max-width:120px;height:auto;"></td></tr><tr><td style="padding:25px 30px;"><p style="font-size:15px;margin:0 0 6px 0;">Dear <strong>${booking.fullname || 'Valued Customer'}</strong>,</p><p style="font-size:13px;color:#666;margin:0 0 18px 0;">Thank you for your payment. Your invoice from Binti Events is attached as a PDF.</p><table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;margin-bottom:18px;"><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;width:40%;">Invoice No</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">INV-${invoiceNo}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Amount</td><td style="padding:8px 0;color:#4CAF50;font-weight:700;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${(booking.totalAmount || 0).toLocaleString()}</td></tr>${booking.transactionId ? `<tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Transaction ID</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">${booking.transactionId}</td></tr>` : ''}<tr><td style="padding:8px 0;color:#666;">Venue</td><td style="padding:8px 0;color:#333;font-weight:600;text-align:right;">${booking.venue || 'N/A'}</td></tr></table><p style="font-size:13px;color:#666;margin:0 0 6px 0;">For any questions, please contact us:</p><p style="font-size:13px;color:#333;margin:0;">${this.companyInfo.phone} | ${this.companyInfo.email}</p></td></tr><tr><td style="background:#fafafa;border-top:2px solid #FFC0FA;padding:20px 30px;text-align:center;"><p style="font-size:12px;color:#666;margin:0 0 8px 0;"><strong style="color:#333;">Binti Events</strong></p><p style="font-size:11px;color:#999;margin:0;"><a href="https://www.instagram.com/bintievents/" style="color:#7851A9;text-decoration:none;">Instagram</a> &nbsp; <a href="https://www.facebook.com/bintievents/" style="color:#7851A9;text-decoration:none;">Facebook</a> &nbsp; <a href="https://www.tiktok.com/@bintievents" style="color:#7851A9;text-decoration:none;">TikTok</a></p></td></tr></table></td></tr></table></body></html>`,
+        subject: `Invoice - Binti Events (${invoiceNo})`,
+        html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#333;background:#f5f5f5;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:4px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);"><tr><td style="padding:25px 30px;border-bottom:3px solid #FFC0FA;"><img src="https://bintievents.vercel.app/images/logo1.png" alt="Binti Events" width="120" style="display:block;max-width:120px;height:auto;"></td></tr><tr><td style="padding:25px 30px;"><p style="font-size:15px;margin:0 0 6px 0;">Dear <strong>${booking.fullname || 'Valued Customer'}</strong>,</p><p style="font-size:13px;color:#666;margin:0 0 18px 0;">Thank you for your payment. Your invoice from Binti Events is attached as a PDF.</p><table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;margin-bottom:18px;"><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;width:40%;">Invoice No</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">${invoiceNo}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">${paymentSummary.paidLabel}</td><td style="padding:8px 0;color:#4CAF50;font-weight:700;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.paidAmount.toLocaleString()}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">${paymentSummary.remainingLabel}</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.remainingAmount.toLocaleString()}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Total Amount</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.totalAmount.toLocaleString()}</td></tr>${booking.transactionId ? `<tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Transaction ID</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">${booking.transactionId}</td></tr>` : ''}<tr><td style="padding:8px 0;color:#666;">Venue</td><td style="padding:8px 0;color:#333;font-weight:600;text-align:right;">${booking.venue || 'N/A'}</td></tr></table><p style="font-size:13px;color:#666;margin:0 0 6px 0;">For any questions, please contact us:</p><p style="font-size:13px;color:#333;margin:0;">${this.companyInfo.phone} | ${this.companyInfo.email}</p></td></tr><tr><td style="background:#fafafa;border-top:2px solid #FFC0FA;padding:20px 30px;text-align:center;"><p style="font-size:12px;color:#666;margin:0 0 8px 0;"><strong style="color:#333;">Binti Events</strong></p><p style="font-size:11px;color:#999;margin:0;"><a href="https://www.instagram.com/bintievents/" style="color:#7851A9;text-decoration:none;">Instagram</a> &nbsp; <a href="https://www.facebook.com/bintievents/" style="color:#7851A9;text-decoration:none;">Facebook</a> &nbsp; <a href="https://www.tiktok.com/@bintievents" style="color:#7851A9;text-decoration:none;">TikTok</a></p></td></tr></table></td></tr></table></body></html>`,
         attachments: [{
           filename: pdfFilename,
           content: pdfBuffer,
@@ -561,18 +631,13 @@ class InvoiceService {
   /**
    * Check for paid bookings without invoices and send them
    * Call this periodically (e.g., every 5 minutes) via a scheduler
-   * @param {Function} Booking - Mongoose Booking model
+   * @param {Object} bookingRepository - Booking repository instance
    */
-  async processPendingInvoices(Booking) {
+  async processPendingInvoices(bookingRepository) {
     try {
       console.log('[INVOICE] Checking for pending invoices...');
 
-      // Find bookings that are paid but haven't had invoices sent yet
-      // (OR add an `invoiceSent` flag to Booking model for better tracking)
-      const paidBookings = await Booking.find({
-        status: 'paid',
-        invoiceSent: { $ne: true }, // Only if not sent yet
-      });
+      const paidBookings = await bookingRepository.findPaidWithoutInvoice();
 
       if (paidBookings.length === 0) {
         console.log('[INVOICE] No pending invoices to process');
@@ -585,8 +650,7 @@ class InvoiceService {
         const success = await this.sendInvoice(booking);
         
         if (success) {
-          // Mark invoice as sent
-          await Booking.findByIdAndUpdate(booking._id, { invoiceSent: true });
+          await bookingRepository.markInvoiceSent(booking.id);
         }
       }
     } catch (error) {

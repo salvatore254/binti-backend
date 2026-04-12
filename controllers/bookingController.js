@@ -6,7 +6,7 @@
 const response = require('../utils/response');
 const logger = require('../utils/logger');
 const { validateBookingData } = require('../validators/bookingValidator');
-const { query } = require('../database/connection');
+const bookingRepository = require('../repositories/bookingRepository');
 
 /**
  * Create a new booking
@@ -30,7 +30,6 @@ const createBooking = async (req, res, next) => {
     }
 
     // Create booking document
-    const Booking = query('Booking');
     const bookingData = {
       fullname,
       phone,
@@ -46,7 +45,7 @@ const createBooking = async (req, res, next) => {
       status: 'pending',
     };
 
-    const booking = await Booking.create(bookingData);
+    const booking = await bookingRepository.create(bookingData);
 
     logger.info(`New booking created: ${booking._id} for ${fullname}`);
 
@@ -72,8 +71,7 @@ const getBooking = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const Booking = query('Booking');
-    const booking = await Booking.findById(id);
+    const booking = await bookingRepository.findById(id);
 
     if (!booking) {
       return response.error(res, 'Booking not found', 404);
@@ -96,15 +94,7 @@ const getAllBookings = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    const Booking = query('Booking');
-    const bookings = await Booking.find()
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-
-    const total = await Booking.countDocuments();
+    const { bookings, total } = await bookingRepository.findPaginated(page, limit);
 
     logger.info(`Retrieved ${bookings.length} bookings (page ${page})`);
 
@@ -124,12 +114,7 @@ const updateBooking = async (req, res, next) => {
     const { id } = req.params;
     const updateData = req.body;
 
-    const Booking = query('Booking');
-    const booking = await Booking.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true }
-    );
+    const booking = await bookingRepository.updateById(id, updateData);
 
     if (!booking) {
       return response.error(res, 'Booking not found', 404);
@@ -152,12 +137,7 @@ const cancelBooking = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const Booking = query('Booking');
-    const booking = await Booking.findByIdAndUpdate(
-      id,
-      { status: 'cancelled', updatedAt: new Date() },
-      { new: true }
-    );
+    const booking = await bookingRepository.updateById(id, { status: 'cancelled' });
 
     if (!booking) {
       return response.error(res, 'Booking not found', 404);

@@ -17,9 +17,9 @@ class InvoiceScheduler {
   /**
    * Start the scheduler to process invoices every X seconds
    * @param {number} intervalSeconds - How often to check for pending invoices (default: 300 = 5 minutes)
-   * @param {Object} Booking - Mongoose Booking model
+    * @param {Object} bookingRepository - Booking repository instance
    */
-  start(Booking, intervalSeconds = 300) {
+    start(bookingRepository, intervalSeconds = 300) {
     if (this.isRunning) {
       console.log('[INVOICE SCHEDULER] Already running');
       return;
@@ -29,11 +29,11 @@ class InvoiceScheduler {
     this.isRunning = true;
 
     // Run immediately on start
-    this.invoiceService.processPendingInvoices(Booking);
+    this.invoiceService.processPendingInvoices(bookingRepository);
 
     // Then run at regular intervals
     this.interval = setInterval(() => {
-      this.invoiceService.processPendingInvoices(Booking);
+      this.invoiceService.processPendingInvoices(bookingRepository);
     }, intervalSeconds * 1000);
   }
 
@@ -51,11 +51,11 @@ class InvoiceScheduler {
 
   /**
    * Manually trigger invoice processing
-   * @param {Object} Booking - Mongoose Booking model
+   * @param {Object} bookingRepository - Booking repository instance
    */
-  async processNow(Booking) {
+  async processNow(bookingRepository) {
     console.log('[INVOICE SCHEDULER] Manual trigger: processing pending invoices...');
-    await this.invoiceService.processPendingInvoices(Booking);
+    await this.invoiceService.processPendingInvoices(bookingRepository);
   }
 }
 

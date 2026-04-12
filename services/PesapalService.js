@@ -8,6 +8,29 @@ const axios = require("axios");
  */
 
 class PesapalService {
+  isUnsafeBrowserRedirectUrl(url) {
+    if (!url) {
+      return true;
+    }
+
+    try {
+      const parsedUrl = new URL(url);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      const pathname = parsedUrl.pathname.toLowerCase();
+
+      const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+      const isPrivateLan =
+        hostname.startsWith('192.168.') ||
+        hostname.startsWith('10.') ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+      const pointsToBackendCallback = pathname.includes('/api/payments/pesapal-callback');
+
+      return isLocalHost || isPrivateLan || pointsToBackendCallback;
+    } catch (error) {
+      return true;
+    }
+  }
+
   normalizePhoneNumber(phone) {
     return String(phone || '').replace(/[^0-9]/g, '');
   }
@@ -60,8 +83,19 @@ class PesapalService {
     this.apiUrl = process.env.PESAPAL_API_URL || 
             (isProduction ? 'https://pay.pesapal.com/v3' : 'https://cybqa.pesapal.com/pesapalv3');
     
-    this.redirectUrl = process.env.PESAPAL_REDIRECT_URL || process.env.PESAPAL_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/pesapal-callback`;
-    this.ipnUrl = process.env.PESAPAL_IPN_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/pesapal-callback`;
+    const frontendBaseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:5500').replace(/\/$/, '');
+    const backendBaseUrl = (process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+
+    // Redirect URL is where Pesapal sends the shopper's browser after payment.
+    // This must be a public frontend URL, not a backend localhost/private-network URL.
+    const configuredRedirectUrl = process.env.PESAPAL_REDIRECT_URL || '';
+    this.redirectUrl = this.isUnsafeBrowserRedirectUrl(configuredRedirectUrl)
+      ? `${frontendBaseUrl}/checkout.html`
+      : configuredRedirectUrl;
+
+    // IPN URL is where Pesapal sends the server-to-server payment confirmation.
+    // This must remain on the backend so bookings can be marked paid.
+    this.ipnUrl = process.env.PESAPAL_IPN_URL || process.env.PESAPAL_CALLBACK_URL || `${backendBaseUrl}/api/payments/pesapal-callback`;
     this.notificationId = process.env.PESAPAL_NOTIFICATION_ID || null;
     
     this.authUrl = `${this.apiUrl}/api/Auth/RequestToken`;
@@ -75,6 +109,11 @@ class PesapalService {
     
     console.log(`[PESAPAL] Initialized in ${useSandbox || !isProduction ? 'SANDBOX' : 'PRODUCTION'} mode`);
     console.log(`[PESAPAL] API URL: ${this.apiUrl}`);
+    console.log(`[PESAPAL] Redirect URL: ${this.redirectUrl}`);
+    console.log(`[PESAPAL] IPN URL: ${this.ipnUrl}`);
+    if (configuredRedirectUrl && this.redirectUrl !== configuredRedirectUrl) {
+      console.warn(`[PESAPAL] Ignoring unsafe PESAPAL_REDIRECT_URL: ${configuredRedirectUrl}`);
+    }
   }
 
   /**
@@ -355,6 +394,7 @@ class PesapalService {
       return {
         success: true,
         orderTrackingId: responseData.order_tracking_id,
+        transactionTrackingId: responseData.confirmation_code || responseData.transaction_tracking_id || responseData.merchant_reference || null,
         status: responseData.payment_status_description || responseData.status || responseData.status_code,
         statusCode: responseData.status_code,
         paymentMethod: responseData.payment_method,

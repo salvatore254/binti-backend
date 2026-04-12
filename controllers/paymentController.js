@@ -6,7 +6,7 @@
 const response = require('../utils/response');
 const logger = require('../utils/logger');
 const { validatePaymentData } = require('../validators/bookingValidator');
-const { query } = require('../database/connection');
+const bookingRepository = require('../repositories/bookingRepository');
 const InvoiceService = require('../services/InvoiceService');
 const WhatsAppService = require('../services/WhatsAppService');
 const invoiceService = new InvoiceService();
@@ -114,23 +114,16 @@ const mpesaCallback = async (req, res, next) => {
         if (item.Name === 'AccountReference') bookingId = item.Value;
       });
 
-      // Update booking in MongoDB with payment confirmation
+      // Update booking in PostgreSQL with payment confirmation
       // Use bookingId (accountRef) as primary lookup, not phone number (more reliable)
-      const Booking = query('Booking');
       let booking = null;
       
       if (bookingId) {
         // Try to find by bookingId first (most reliable)
-        booking = await Booking.findByIdAndUpdate(
-          bookingId,
-          {
-            status: 'paid',
-            paymentMethod: 'mpesa',
-            transactionId: reference,
-            updatedAt: new Date(),
-          },
-          { new: true }
-        );
+        booking = await bookingRepository.markPaid(bookingId, {
+          paymentMethod: 'mpesa',
+          transactionId: reference,
+        });
         
         if (booking) {
           logger.info(`Booking ${booking._id} updated to paid status via M-Pesa (found by ID)`);
@@ -141,15 +134,13 @@ const mpesaCallback = async (req, res, next) => {
       
       // Fallback: Try phone lookup if ID lookup failed
       if (!booking && phone) {
-        booking = await Booking.findOneAndUpdate(
+        booking = await bookingRepository.updateByFields(
           { mpesaPhone: phone.toString() },
           {
             status: 'paid',
             paymentMethod: 'mpesa',
             transactionId: reference,
-            updatedAt: new Date(),
-          },
-          { new: true }
+          }
         );
         
         if (booking) {
@@ -185,9 +176,7 @@ const mpesaCallback = async (req, res, next) => {
         // Send invoice asynchronously and mark as sent
         invoiceService.sendInvoice(booking).then(async (success) => {
           if (success) {
-            booking.invoiceSent = true;
-            booking.invoiceSentAt = new Date();
-            await booking.save();
+            await bookingRepository.markInvoiceSent(booking.id);
             logger.info(`Invoice sent and flagged for booking ${booking._id}`);
           }
         }).catch(err => {
@@ -220,17 +209,10 @@ const pesapalCallback = async (req, res, next) => {
 
     // Update booking with payment confirmation if we have a transaction ID
     if (pesapal_transaction_tracking_id) {
-      const Booking = query('Booking');
-      const booking = await Booking.findByIdAndUpdate(
-        order_tracking_id,
-        {
-          status: 'paid',
-          paymentMethod: 'pesapal',
-          transactionId: pesapal_transaction_tracking_id,
-          updatedAt: new Date(),
-        },
-        { new: true }
-      );
+      const booking = await bookingRepository.markPaid(order_tracking_id, {
+        paymentMethod: 'pesapal',
+        transactionId: pesapal_transaction_tracking_id,
+      });
 
       if (booking) {
         logger.info(`Booking ${booking._id} updated to paid status via Pesapal`);
@@ -261,9 +243,7 @@ const pesapalCallback = async (req, res, next) => {
         // Send invoice asynchronously and mark as sent
         invoiceService.sendInvoice(booking).then(async (success) => {
           if (success) {
-            booking.invoiceSent = true;
-            booking.invoiceSentAt = new Date();
-            await booking.save();
+            await bookingRepository.markInvoiceSent(booking.id);
             logger.info(`Invoice sent and flagged for booking ${booking._id}`);
           }
         }).catch(err => {
@@ -291,8 +271,7 @@ const getPaymentStatus = async (req, res, next) => {
   try {
     const { bookingId } = req.params;
 
-    const Booking = query('Booking');
-    const booking = await Booking.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId);
 
     if (!booking) {
       return response.error(res, 'Booking not found', 404);

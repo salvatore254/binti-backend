@@ -1,5 +1,5 @@
 // server.js
-require("dotenv").config();
+require("dotenv").config({ override: true });
 const express = require("express");
 const path = require("path");
 // Use Express native body parsing (instead of body-parser package)
@@ -13,7 +13,7 @@ const contactRoutes = require("./routes/contactRoutes");
 const { initializeConnection: initializeDatabase } = require("./database/connection");
 const logger = require("./utils/logger");
 const InvoiceScheduler = require("./services/InvoiceScheduler");
-const Booking = require("./models/Booking");
+const bookingRepository = require("./repositories/bookingRepository");
 
 // Global error handlers for unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
@@ -39,14 +39,20 @@ app.use((req, res, next) => {
 // CORS configuration - allow frontend and development origins
 const whitelist = [
   'https://bintievents.vercel.app',
+  process.env.FRONTEND_URL,
+  process.env.APP_URL,
+  process.env.BACKEND_URL,
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:5500',
   'http://localhost:5000',
   'http://localhost:8000',
   'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:5500',
   'http://127.0.0.1:5000',
   'http://127.0.0.1:8000'
-];
+].filter(Boolean);
 
 const resolveAllowedOrigin = (origin) => {
   if (!origin) {
@@ -83,8 +89,14 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // Body parsing with size limits (using Express native parsers)
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+const rawBodyVerifier = (req, res, buf) => {
+  if (buf?.length) {
+    req.rawBody = buf.toString('utf8');
+  }
+};
+
+app.use(express.json({ limit: "1mb", verify: rawBodyVerifier }));
+app.use(express.urlencoded({ extended: true, limit: "1mb", verify: rawBodyVerifier }));
 
 
 // api routes
@@ -242,16 +254,9 @@ const initializeServer = async () => {
   try {
     console.log('[SERVER] Starting initialization...');
     
-    // Initialize MongoDB connection
-    try {
-      await initializeDatabase();
-      logger.info('MongoDB connected');
-      console.log('[DB] MongoDB connection successful');
-    } catch (dbErr) {
-      console.error('[DB] MongoDB connection failed:', dbErr.message);
-      console.log('[DB] WARNING: Continuing without database - API will still work');
-      logger.error('MongoDB connection failed: ' + dbErr.message);
-    }
+    await initializeDatabase();
+    logger.info('PostgreSQL connected');
+    console.log('[DB] PostgreSQL connection successful');
     
     // Verify Resend is configured
     const resendApiKey = process.env.RESEND_API_KEY;
@@ -281,12 +286,11 @@ const initializeServer = async () => {
     // Initialize Invoice Scheduler (runs every 5 minutes to check for pending invoices)
     try {
       const invoiceScheduler = new InvoiceScheduler();
-      invoiceScheduler.start(Booking, 300); // Check every 5 minutes (300 seconds)
+      invoiceScheduler.start(bookingRepository, 300); // Check every 5 minutes (300 seconds)
       console.log('[INVOICE SCHEDULER] Invoice scheduler started');
     } catch (schedulerErr) {
       console.warn('[INVOICE SCHEDULER] Failed to start scheduler:', schedulerErr.message);
       logger.warn('Invoice scheduler initialization failed: ' + schedulerErr.message);
-      // Continue anyway - invoices will still be sent on payment callback
     }
     
     // Start server immediately (don't wait on DB)

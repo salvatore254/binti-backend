@@ -41,6 +41,10 @@ class MpesaService {
     console.log(`[MPESA] Base URL: ${this.baseUrl}`);
   }
 
+  isConfigured() {
+    return Boolean(this.consumerKey && this.consumerSecret && this.shortcode && this.passkey);
+  }
+
   /**
    * Get OAuth access token from Daraja API
    * Tokens are cached for 59 minutes (refresh before expiry)
@@ -108,7 +112,7 @@ class MpesaService {
   async initiateStkPush(phone, amount, accountRef, description = 'Binti Events Booking') {
     try {
       // Validate that credentials are configured
-      if (!this.consumerKey || !this.consumerSecret || !this.shortcode || !this.passkey) {
+      if (!this.isConfigured()) {
         throw new Error('M-Pesa credentials not configured. Set MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_SHORTCODE, and MPESA_PASSKEY in .env file.');
       }
 

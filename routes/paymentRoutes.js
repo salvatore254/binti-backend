@@ -3,29 +3,15 @@ const express = require("express");
 const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
 const MpesaService = require("../services/MpesaService");
+const MexpressService = require("../services/MexpressService");
 const PesapalService = require("../services/PesapalService");
-const PesapalServiceMock = require("../services/PesapalServiceMock");
 const EmailService = require("../services/EmailService");
-const Booking = require("../models/Booking");
+const bookingRepository = require("../repositories/bookingRepository");
 
 // Initialize payment services (production or sandbox based on NODE_ENV)
 const mpesaService = new MpesaService();
-
-// Use mock Pesapal service if:
-// 1. USE_PESAPAL_MOCK environment variable is set to 'true'
-// 2. NODE_ENV is 'development' and PESAPAL_CONSUMER_KEY is not set (credentials missing)
-const useMockPesapal = process.env.USE_PESAPAL_MOCK === 'true' || 
-                       (process.env.NODE_ENV !== 'production' && !process.env.PESAPAL_CONSUMER_KEY);
-
-const pesapalService = useMockPesapal 
-  ? new PesapalServiceMock()
-  : new PesapalService();
-
-if (useMockPesapal) {
-  console.log('[PAYMENT] ⚠️  Using MOCK Pesapal service for testing (no network access)');
-  console.log('[PAYMENT] To use real Pesapal: Set PESAPAL_CONSUMER_KEY and PESAPAL_CONSUMER_SECRET in .env');
-  console.log('[PAYMENT] Or disable mock: Set USE_PESAPAL_MOCK=false in .env');
-}
+const mexpressService = new MexpressService();
+const pesapalService = new PesapalService();
 
 // Get email service instance lazily when needed
 const getEmailService = () => EmailService();
@@ -52,7 +38,70 @@ const getExpectedDepositAmount = (booking) => {
   return Math.round(Number(booking.totalAmount || 0) * 0.8);
 };
 
+const getAllowedPaymentAmounts = (booking) => {
+  const depositAmount = getExpectedDepositAmount(booking);
+  const totalAmount = Math.round(Number(booking.totalAmount || 0));
+
+  return Array.from(new Set([
+    depositAmount,
+    totalAmount,
+  ].filter((amount) => Number.isFinite(amount) && amount > 0)));
+};
+
+const isAllowedPaymentAmount = (booking, amount) => {
+  const roundedAmount = Math.round(Number(amount));
+  return getAllowedPaymentAmounts(booking).includes(roundedAmount);
+};
+
+const resolveRequestedPaymentAmount = (booking, requestedAmount) => {
+  if (requestedAmount === undefined || requestedAmount === null || requestedAmount === '') {
+    return getExpectedDepositAmount(booking);
+  }
+
+  const roundedAmount = Math.round(Number(requestedAmount));
+  if (!Number.isFinite(roundedAmount) || roundedAmount <= 0) {
+    throw new Error('Invalid payment amount supplied.');
+  }
+
+  if (!isAllowedPaymentAmount(booking, roundedAmount)) {
+    const allowedAmounts = getAllowedPaymentAmounts(booking).join(' or ');
+    throw new Error(`Payment amount mismatch. Use ${allowedAmounts}.`);
+  }
+
+  return roundedAmount;
+};
+
 const amountsMatch = (actual, expected) => Math.round(Number(actual)) === Math.round(Number(expected));
+
+const resolveMpesaProvider = () => {
+  const configuredProvider = String(process.env.MPESA_PROVIDER || '').trim().toLowerCase();
+
+  if (configuredProvider === 'mexpress') {
+    if (!mexpressService.isConfigured()) {
+      throw new Error('MPESA_PROVIDER is set to mexpress but MEexpress credentials are not configured.');
+    }
+
+    return 'mexpress';
+  }
+
+  if (configuredProvider === 'daraja') {
+    if (!mpesaService.isConfigured()) {
+      throw new Error('MPESA_PROVIDER is set to daraja but Daraja credentials are not configured.');
+    }
+
+    return 'daraja';
+  }
+
+  if (mpesaService.isConfigured()) {
+    return 'daraja';
+  }
+
+  if (mexpressService.isConfigured()) {
+    return 'mexpress';
+  }
+
+  throw new Error('No M-Pesa provider is configured. Set Daraja credentials or MEexpress credentials in .env.');
+};
 
 const normalizePesapalStatus = (status) => String(status || '').trim().toUpperCase();
 
@@ -67,6 +116,49 @@ const buildPesapalOrderRef = (bookingId) => {
     .slice(-16);
   const suffix = uuidv4().replace(/-/g, '').slice(0, 8);
   return `ORD_${bookingRef}_${suffix}`;
+};
+
+const sendPostPaymentArtifacts = async (booking, paidAmount, transactionId) => {
+  if (!booking) {
+    return;
+  }
+
+  const paymentDetails = {
+    paidAmount: Math.round(Number(paidAmount || booking.depositAmount || 0)),
+    remainingAmount: Math.max(Math.round(Number(booking.totalAmount || 0)) - Math.round(Number(paidAmount || booking.depositAmount || 0)), 0),
+    transactionId: transactionId || booking.transactionId || null,
+  };
+
+  try {
+    const emailService = getEmailService();
+    const emailResult = await emailService.sendPaymentConfirmation({
+      ...booking,
+      ...paymentDetails,
+    }, paymentDetails.transactionId);
+
+    if (emailResult.success) {
+      console.log('[PAYMENT] Payment confirmation email sent successfully');
+    } else {
+      console.warn('[PAYMENT] Payment confirmation email failed:', emailResult.error);
+    }
+  } catch (emailError) {
+    console.error('[PAYMENT] Error sending payment confirmation email:', emailError.message);
+  }
+
+  try {
+    const InvoiceService = require('../services/InvoiceService');
+    const invoiceService = new InvoiceService();
+    const invoiceSent = await invoiceService.sendInvoice({
+      ...booking,
+      ...paymentDetails,
+    });
+    if (invoiceSent) {
+      await bookingRepository.markInvoiceSent(booking.id);
+      console.log('[PAYMENT] Invoice sent successfully');
+    }
+  } catch (invoiceErr) {
+    console.error('[PAYMENT] Invoice error:', invoiceErr.message);
+  }
 };
 
 const getPesapalCallbackPayload = (req) => ({
@@ -89,7 +181,7 @@ const handlePesapalCallback = async (req, res) => {
 
     console.log("[PESAPAL CALLBACK] Parsed callback:", validation);
 
-    const booking = await Booking.findOne({ pesapalOrderTrackingId: validation.orderTrackingId });
+    const booking = await bookingRepository.findByPesapalOrderTrackingId(validation.orderTrackingId);
 
     if (!booking) {
       console.warn("[PESAPAL CALLBACK] No booking found for", validation.orderTrackingId);
@@ -104,49 +196,26 @@ const handlePesapalCallback = async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const expectedAmount = getExpectedDepositAmount(booking);
-    if (!amountsMatch(statusCheck.amount, expectedAmount)) {
-      booking.status = 'payment_failed';
-      booking.paymentFailureReason = 'Pesapal callback amount mismatch';
-      booking.lastPaymentError = `Expected ${expectedAmount} but received ${statusCheck.amount}`;
-      booking.lastPaymentAttempt = new Date();
-      booking.updatedAt = new Date();
-      await booking.save();
+    if (!isAllowedPaymentAmount(booking, statusCheck.amount)) {
+      await bookingRepository.markPaymentFailed(booking.id, {
+        reason: 'Pesapal callback amount mismatch',
+        error: `Expected one of ${getAllowedPaymentAmounts(booking).join(' or ')} but received ${statusCheck.amount}`,
+      });
       console.error("[PESAPAL CALLBACK] Amount mismatch for booking", booking._id);
       return res.sendStatus(200);
     }
 
-    booking.status = 'paid';
-    booking.paymentMethod = 'pesapal';
-    booking.transactionId = validation.transactionTrackingId || validation.orderTrackingId;
-    booking.updatedAt = new Date();
-    await booking.save();
+    const wasAlreadyPaid = booking.status === 'paid';
+    const paidBooking = await bookingRepository.markPaid(booking.id, {
+      paymentMethod: 'pesapal',
+      transactionId: validation.transactionTrackingId || validation.orderTrackingId,
+      paidAmount: statusCheck.amount,
+    });
 
-    try {
-      console.log("[PESAPAL CALLBACK] Sending confirmation email to", booking.email);
-      const emailService = getEmailService();
-      const emailResult = await emailService.sendPaymentConfirmation(booking, booking.transactionId);
-
-      if (emailResult.success) {
-        console.log("[PESAPAL CALLBACK] Confirmation email sent successfully");
-      } else {
-        console.warn("[PESAPAL CALLBACK] Email sending failed:", emailResult.error);
-      }
-    } catch (emailError) {
-      console.error("[PESAPAL CALLBACK] Error sending confirmation email:", emailError.message);
-    }
-
-    try {
-      const InvoiceService = require('../services/InvoiceService');
-      const invoiceService = new InvoiceService();
-      const invoiceSent = await invoiceService.sendInvoice(booking);
-      if (invoiceSent) {
-        booking.invoiceSent = true;
-        booking.invoiceSentAt = new Date();
-        await booking.save();
-      }
-    } catch (invoiceErr) {
-      console.error("[PESAPAL CALLBACK] Invoice error:", invoiceErr.message);
+    if (!wasAlreadyPaid) {
+      await sendPostPaymentArtifacts(paidBooking, statusCheck.amount, paidBooking.transactionId);
+    } else {
+      console.log('[PESAPAL CALLBACK] Booking already marked paid, skipping duplicate email/invoice send');
     }
 
     return res.sendStatus(200);
@@ -192,7 +261,7 @@ router.post("/pesapal", async (req, res) => {
       });
     }
 
-    const booking = await Booking.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId);
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -217,11 +286,10 @@ router.post("/pesapal", async (req, res) => {
       lastName
     });
 
-    await Booking.findByIdAndUpdate(booking._id, {
+    await bookingRepository.updateById(booking.id, {
       paymentMethod: 'pesapal',
       pesapalOrderRef: orderRef,
       pesapalOrderTrackingId: result.orderTrackingId,
-      updatedAt: new Date(),
     });
 
     return res.json({
@@ -253,6 +321,7 @@ router.post("/pesapal", async (req, res) => {
 router.post("/mpesa", async (req, res) => {
   try {
     const { phone, amount, accountRef, description } = req.body;
+    const mpesaProvider = resolveMpesaProvider();
     
     console.log(`[PAYMENT] M-Pesa payment initiation:`, {
       phone: phone ? `***${phone.slice(-4)}` : 'N/A',
@@ -268,7 +337,7 @@ router.post("/mpesa", async (req, res) => {
       });
     }
 
-    const booking = await Booking.findById(accountRef);
+    const booking = await bookingRepository.findById(accountRef);
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -276,43 +345,49 @@ router.post("/mpesa", async (req, res) => {
       });
     }
 
-    const expectedAmount = getExpectedDepositAmount(booking);
-    if (amount !== undefined && !amountsMatch(amount, expectedAmount)) {
+    let expectedAmount;
+    try {
+      expectedAmount = resolveRequestedPaymentAmount(booking, amount);
+    } catch (validationError) {
       return res.status(400).json({
         success: false,
-        message: "Payment amount mismatch. Use the booking deposit amount.",
-        expectedAmount,
+        message: validationError.message,
+        allowedAmounts: getAllowedPaymentAmounts(booking),
       });
     }
 
-    // Initiate STK push via Daraja API
-    const result = await mpesaService.initiateStkPush(
-      phone,
-      expectedAmount,
-      accountRef,
-      description || "Binti Events Booking"
-    );
+    const result = mpesaProvider === 'mexpress'
+      ? await mexpressService.createCheckoutSession({
+          bookingId: accountRef,
+          amount: expectedAmount,
+          phone,
+          description: description || 'Binti Events Booking',
+        })
+      : await mpesaService.initiateStkPush(
+          phone,
+          expectedAmount,
+          accountRef,
+          description || "Binti Events Booking"
+        );
 
     // CRITICAL: Save checkoutRequestId on the booking document
     // This is the ONLY reliable identifier M-Pesa returns in callbacks
     // (AccountRef is truncated, Phone can be null in sandbox)
     try {
-      await Booking.findByIdAndUpdate(accountRef, {
+      await bookingRepository.updateById(accountRef, {
         checkoutRequestId: result.checkoutRequestId,
         paymentMethod: 'mpesa',
         mpesaPhone: phone,
-        updatedAt: new Date()
       });
       console.log(`[PAYMENT] ✅ Saved checkoutRequestId ${result.checkoutRequestId} on booking ${accountRef}`);
     } catch (dbErr) {
       console.error(`[PAYMENT] ⚠️ Failed to save checkoutRequestId on booking:`, dbErr.message);
     }
 
-    // Cache booking data keyed by checkoutRequestId (NOT accountRef)
-    // This is used when callback comes back to send confirmation emails
+    // Cache booking data keyed by checkoutRequestId for provider callbacks and notifications.
     const bookingData = {
-      _id: booking._id,
-      id: booking._id,
+      _id: booking.id,
+      id: booking.id,
       fullname: booking.fullname || 'Guest',
       email: booking.email || '',
       phone: booking.phone || phone,
@@ -324,14 +399,13 @@ router.post("/mpesa", async (req, res) => {
       mpesaPhone: phone,
       accountRef: accountRef,
       checkoutRequestId: result.checkoutRequestId,
+      provider: mpesaProvider,
       timestamp: new Date().toISOString()
     };
 
-    // Store in cache with checkoutRequestId as key (reliable in callback)
     bookingCache[result.checkoutRequestId] = bookingData;
     console.log(`[PAYMENT] Booking data cached with checkoutRequestId: ${result.checkoutRequestId}`);
 
-    // Auto-clean cache after 30 minutes (payment should complete within this time)
     setTimeout(() => {
       if (bookingCache[result.checkoutRequestId]) {
         delete bookingCache[result.checkoutRequestId];
@@ -342,12 +416,21 @@ router.post("/mpesa", async (req, res) => {
     return res.json({
       success: true,
       status: 'pending',
-      message: "STK push initiated successfully - customer should see prompt on their phone",
+      message: mpesaProvider === 'mexpress'
+        ? 'M-Pesa payment session created successfully'
+        : 'STK push initiated successfully - customer should see prompt on their phone',
+      paymentProvider: mpesaProvider,
       checkoutRequestId: result.checkoutRequestId,
       responseCode: result.responseCode,
       responseDescription: result.responseDescription,
       merchantRequestId: result.merchantRequestId,
-      instruction: "Confirm the prompt on your phone to complete payment",
+      redirectUrl: result.redirectUrl || result.redirect_url || result.url || null,
+      redirect_url: result.redirect_url || result.redirectUrl || result.url || null,
+      url: result.url || result.redirectUrl || result.redirect_url || null,
+      requiresRedirect: mpesaProvider === 'mexpress',
+      instruction: mpesaProvider === 'mexpress'
+        ? 'Open the secure M-Pesa checkout page to complete payment'
+        : 'Confirm the prompt on your phone to complete payment',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -402,7 +485,7 @@ router.post("/mpesa-callback", async (req, res) => {
     }
 
     // Look up booking by checkoutRequestId (saved when STK push was initiated)
-    let booking = await Booking.findOne({ checkoutRequestId: checkoutRequestId });
+    let booking = await bookingRepository.findByCheckoutRequestId(checkoutRequestId);
     let cachedBooking = bookingCache[checkoutRequestId] || null;
     
     console.log("[MPESA CALLBACK] Booking found by checkoutRequestId:", !!booking);
@@ -411,7 +494,7 @@ router.post("/mpesa-callback", async (req, res) => {
     if (!booking && cachedBooking && cachedBooking._id) {
       // Fallback: try finding by cached booking ID
       console.log("[MPESA CALLBACK] Trying cached booking ID fallback:", cachedBooking._id);
-      booking = await Booking.findById(cachedBooking._id);
+      booking = await bookingRepository.findById(cachedBooking._id);
     }
 
     if (!booking) {
@@ -428,57 +511,33 @@ router.post("/mpesa-callback", async (req, res) => {
       console.log("[MPESA CALLBACK] Receipt:", callbackData.mpesaReceiptNumber);
       console.log("[MPESA CALLBACK] Amount:", callbackData.amount);
 
-      const expectedAmount = getExpectedDepositAmount(booking);
-      if (!amountsMatch(callbackData.amount, expectedAmount)) {
-        booking.status = 'payment_failed';
-        booking.paymentFailureReason = 'M-Pesa callback amount mismatch';
-        booking.paymentFailureCode = callbackData.resultCode;
-        booking.lastPaymentAttempt = new Date();
-        booking.lastPaymentError = `Expected ${expectedAmount} but received ${callbackData.amount}`;
-        booking.updatedAt = new Date();
-        await booking.save();
+      if (!isAllowedPaymentAmount(booking, callbackData.amount)) {
+        await bookingRepository.markPaymentFailed(booking.id, {
+          reason: 'M-Pesa callback amount mismatch',
+          code: callbackData.resultCode,
+          error: `Expected one of ${getAllowedPaymentAmounts(booking).join(' or ')} but received ${callbackData.amount}`,
+        });
         console.error("[MPESA CALLBACK] Amount mismatch for booking", booking._id);
         delete bookingCache[checkoutRequestId];
         return res.sendStatus(200);
       }
 
-      booking.status = 'paid';
-      booking.paymentMethod = 'mpesa';
-      booking.transactionId = callbackData.mpesaReceiptNumber;
-      booking.updatedAt = new Date();
-      await booking.save();
+      const wasAlreadyPaid = booking.status === 'paid';
+      booking = await bookingRepository.markPaid(booking.id, {
+        paymentMethod: 'mpesa',
+        transactionId: callbackData.mpesaReceiptNumber,
+        paidAmount: callbackData.amount,
+      });
 
       console.log("[MPESA CALLBACK] Booking status updated to PAID (ID:", booking._id, ")");
 
-      // Send confirmation email
-      try {
-        const emailData = cachedBooking || booking;
-        console.log("[MPESA CALLBACK] Sending payment confirmation email to", emailData.email);
-        const emailService = getEmailService();
-        const emailResult = await emailService.sendPaymentConfirmation(emailData, callbackData.mpesaReceiptNumber);
-        
-        if (emailResult.success) {
-          console.log("[MPESA CALLBACK] Confirmation email sent (ID:", emailResult.messageId, ")");
-        } else {
-          console.warn("[MPESA CALLBACK] Email failed:", emailResult.error);
-        }
-      } catch (emailError) {
-        console.error("[MPESA CALLBACK] Email error:", emailError.message);
-      }
-
-      // Send invoice and mark as sent
-      try {
-        const InvoiceService = require('../services/InvoiceService');
-        const invoiceService = new InvoiceService();
-        const invoiceSent = await invoiceService.sendInvoice(booking);
-        if (invoiceSent) {
-          booking.invoiceSent = true;
-          booking.invoiceSentAt = new Date();
-          await booking.save();
-          console.log("[MPESA CALLBACK] Invoice sent and flagged for booking", booking._id);
-        }
-      } catch (invoiceErr) {
-        console.error("[MPESA CALLBACK] Invoice error:", invoiceErr.message);
+      if (!wasAlreadyPaid) {
+        await sendPostPaymentArtifacts({
+          ...(cachedBooking || {}),
+          ...booking,
+        }, callbackData.amount, callbackData.mpesaReceiptNumber);
+      } else {
+        console.log('[MPESA CALLBACK] Booking already marked paid, skipping duplicate email/invoice send');
       }
 
     } else {
@@ -487,13 +546,11 @@ router.post("/mpesa-callback", async (req, res) => {
       console.log("[MPESA CALLBACK] ResultCode:", callbackData.resultCode);
       console.log("[MPESA CALLBACK] ResultDesc:", callbackData.resultDesc);
 
-      booking.status = 'payment_failed';
-      booking.paymentFailureReason = callbackData.resultDesc;
-      booking.paymentFailureCode = callbackData.resultCode;
-      booking.lastPaymentAttempt = new Date();
-      booking.lastPaymentError = callbackData.resultCodeDescription;
-      booking.updatedAt = new Date();
-      await booking.save();
+      await bookingRepository.markPaymentFailed(booking.id, {
+        reason: callbackData.resultDesc,
+        code: callbackData.resultCode,
+        error: callbackData.resultCodeDescription,
+      });
 
       console.log("[MPESA CALLBACK] ✅ Booking status updated to payment_failed (ID:", booking._id, ")");
     }
@@ -508,6 +565,81 @@ router.post("/mpesa-callback", async (req, res) => {
     console.error("[MPESA CALLBACK] Error processing callback:", error.message);
     console.error("[MPESA CALLBACK] Stack:", error.stack);
     res.sendStatus(200); // Still acknowledge to prevent Daraja retries
+  }
+});
+
+router.post('/mexpress-callback', async (req, res) => {
+  try {
+    console.log('[MEXPRESS CALLBACK] Received callback');
+
+    const signatureCheck = mexpressService.validateWebhookSignature(req.headers, req.rawBody || JSON.stringify(req.body || {}));
+    if (!signatureCheck.valid) {
+      console.error('[MEXPRESS CALLBACK] Invalid signature:', signatureCheck.message);
+      return res.status(401).json({ ok: false, error: signatureCheck.message });
+    }
+
+    const callbackData = mexpressService.normalizeWebhookPayload(req.body || {});
+    console.log('[MEXPRESS CALLBACK] Parsed callback:', callbackData);
+
+    if (!callbackData.orderId) {
+      return res.status(400).json({ ok: false, error: 'Missing order_id' });
+    }
+
+    let booking = await bookingRepository.findById(callbackData.orderId);
+    if (!booking) {
+      console.warn('[MEXPRESS CALLBACK] Booking not found for order_id', callbackData.orderId);
+      return res.status(200).json({ ok: true });
+    }
+
+    if (callbackData.status === 'success') {
+      const expectedAmount = getExpectedDepositAmount(booking);
+      if (!amountsMatch(callbackData.amount, expectedAmount)) {
+        await bookingRepository.markPaymentFailed(booking.id, {
+          reason: 'MEexpress callback amount mismatch',
+          error: `Expected ${expectedAmount} but received ${callbackData.amount}`,
+        });
+        return res.status(200).json({ ok: true });
+      }
+
+      booking = await bookingRepository.markPaid(booking.id, {
+        paymentMethod: 'mpesa',
+        transactionId: callbackData.receipt || booking.transactionId || callbackData.orderId,
+      });
+
+      try {
+        const emailService = getEmailService();
+        const emailBooking = bookingCache[booking.checkoutRequestId] || booking;
+        await emailService.sendPaymentConfirmation(emailBooking, booking.transactionId);
+      } catch (emailError) {
+        console.error('[MEXPRESS CALLBACK] Email error:', emailError.message);
+      }
+
+      try {
+        const InvoiceService = require('../services/InvoiceService');
+        const invoiceService = new InvoiceService();
+        const invoiceSent = await invoiceService.sendInvoice(booking);
+        if (invoiceSent) {
+          await bookingRepository.markInvoiceSent(booking.id);
+        }
+      } catch (invoiceError) {
+        console.error('[MEXPRESS CALLBACK] Invoice error:', invoiceError.message);
+      }
+    } else if (callbackData.status === 'failed') {
+      await bookingRepository.markPaymentFailed(booking.id, {
+        reason: callbackData.message || 'MEexpress payment failed',
+      });
+    } else {
+      console.log('[MEXPRESS CALLBACK] Ignoring callback status:', callbackData.status);
+    }
+
+    if (booking.checkoutRequestId) {
+      delete bookingCache[booking.checkoutRequestId];
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error('[MEXPRESS CALLBACK] Error processing callback:', error.message);
+    return res.status(500).json({ ok: false, error: error.message });
   }
 });
 
@@ -646,18 +778,17 @@ router.post("/test/simulate-success", async (req, res) => {
       return res.status(400).json({ success: false, message: "Missing bookingId" });
     }
 
-    const booking = await Booking.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId);
     if (!booking) {
       return res.status(404).json({ success: false, message: "Booking not found" });
     }
 
     const fakeReceipt = "SIM_" + Date.now();
 
-    booking.status = 'paid';
-    booking.paymentMethod = 'mpesa';
-    booking.transactionId = fakeReceipt;
-    booking.updatedAt = new Date();
-    await booking.save();
+    let paidBooking = await bookingRepository.markPaid(bookingId, {
+      paymentMethod: 'mpesa',
+      transactionId: fakeReceipt,
+    });
 
     console.log("[TEST] Simulated success for booking:", bookingId);
 
@@ -666,10 +797,10 @@ router.post("/test/simulate-success", async (req, res) => {
     try {
       const WhatsAppService = require('../services/WhatsAppService');
       const whatsAppService = WhatsAppService();
-      const customerWA = await whatsAppService.sendBookingConfirmation(booking);
+      const customerWA = await whatsAppService.sendBookingConfirmation(paidBooking);
       whatsappResult.customer = customerWA;
       console.log("[TEST] WhatsApp customer result:", customerWA);
-      const adminWA = await whatsAppService.sendAdminAlert(booking);
+      const adminWA = await whatsAppService.sendAdminAlert(paidBooking);
       whatsappResult.admin = adminWA;
       console.log("[TEST] WhatsApp admin result:", adminWA);
     } catch (waErr) {
@@ -681,7 +812,7 @@ router.post("/test/simulate-success", async (req, res) => {
     let invoiceResult = false;
     try {
       const emailService = getEmailService();
-      emailResult = await emailService.sendPaymentConfirmation(booking, fakeReceipt);
+      emailResult = await emailService.sendPaymentConfirmation(paidBooking, fakeReceipt);
       console.log("[TEST] Email result:", emailResult);
     } catch (emailErr) {
       console.error("[TEST] Email error:", emailErr.message);
@@ -691,12 +822,10 @@ router.post("/test/simulate-success", async (req, res) => {
     try {
       const InvoiceService = require('../services/InvoiceService');
       const invoiceService = new InvoiceService();
-      invoiceResult = await invoiceService.sendInvoice(booking);
+      invoiceResult = await invoiceService.sendInvoice(paidBooking);
       console.log("[TEST] Invoice result:", invoiceResult);
       if (invoiceResult) {
-        booking.invoiceSent = true;
-        booking.invoiceSentAt = new Date();
-        await booking.save();
+        paidBooking = await bookingRepository.markInvoiceSent(paidBooking.id);
         console.log("[TEST] invoiceSent flag set to true");
       }
     } catch (invoiceErr) {
@@ -706,7 +835,7 @@ router.post("/test/simulate-success", async (req, res) => {
     return res.json({
       success: true,
       message: "Payment simulated successfully",
-      booking: { id: booking._id, status: booking.status, email: booking.email },
+      booking: { id: paidBooking.id, status: paidBooking.status, email: paidBooking.email },
       email: emailResult,
       invoice: invoiceResult,
       whatsapp: whatsappResult,
@@ -739,7 +868,7 @@ router.get("/status/:bookingId", async (req, res) => {
     console.log("[PAYMENT STATUS] Checking status for booking:", bookingId);
 
     // Query booking from database
-    const booking = await Booking.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId);
     
     if (!booking) {
       return res.status(404).json({

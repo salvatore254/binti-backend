@@ -1,71 +1,98 @@
 /**
- * Database Connection (MongoDB via Mongoose)
- * Manages MongoDB connection with singleton pattern
+ * Database Connection (PostgreSQL via pg)
+ * Manages Postgres connection pooling and schema bootstrapping
  */
 
-const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+const { Pool } = require('pg');
 const config = require('../config/environment');
 const logger = require('../utils/logger');
 
+let pool = null;
 let isDbConnected = false;
 
-/**
- * Initialize MongoDB connection
- * Automatically called on server startup
- */
-const initializeConnection = async () => {
-  try {
-    if (isDbConnected) {
-      logger.info('Database already connected');
-      return mongoose.connection;
+const maskConnectionString = (value) => String(value || '').replace(/:[^:@/]+@/, ':***@');
+
+const getConnectionConfig = () => {
+  if (config.DATABASE_URL) {
+    return {
+      connectionString: config.DATABASE_URL,
+      ssl: config.DB_SSL ? { rejectUnauthorized: false } : undefined,
+    };
+  }
+
+  return {
+    host: config.PGHOST || '127.0.0.1',
+    port: Number(config.PGPORT || 5432),
+    database: config.PGDATABASE || 'binti_events',
+    user: config.PGUSER || 'postgres',
+    password: config.PGPASSWORD || '',
+    ssl: config.DB_SSL ? { rejectUnauthorized: false } : undefined,
+  };
+};
+
+const runMigrations = async () => {
+  const migrationsDir = path.join(__dirname, 'postgres');
+  const files = fs.readdirSync(migrationsDir)
+    .filter((fileName) => fileName.endsWith('.sql'))
+    .sort((left, right) => left.localeCompare(right));
+
+  for (const fileName of files) {
+    const sql = fs.readFileSync(path.join(migrationsDir, fileName), 'utf8').trim();
+    if (!sql) {
+      continue;
     }
 
-    const mongoUri = process.env.DATABASE_URL || process.env.MONGODB_URI || 
-      `mongodb://${config.DB_HOST || 'localhost'}:${config.DB_PORT || 27017}/${config.DB_NAME || 'binti_events'}`;
+    logger.info(`Applying Postgres migration ${fileName}`);
+    await pool.query(sql);
+  }
+};
 
-    logger.info(`Connecting to MongoDB: ${mongoUri.replace(/:[^@]*@/, ':***@')}`);
+const initializeConnection = async () => {
+  try {
+    if (isDbConnected && pool) {
+      logger.info('Database already connected');
+      return pool;
+    }
 
-    await mongoose.connect(mongoUri, {
-      autoCreate: true,
-      autoIndex: true,
-    });
+    const connectionConfig = getConnectionConfig();
+    const connectionLabel = connectionConfig.connectionString
+      ? maskConnectionString(connectionConfig.connectionString)
+      : `${connectionConfig.user}@${connectionConfig.host}:${connectionConfig.port}/${connectionConfig.database}`;
+
+    logger.info(`Connecting to PostgreSQL: ${connectionLabel}`);
+
+    pool = new Pool(connectionConfig);
+    await pool.query('SELECT 1');
+    await runMigrations();
 
     isDbConnected = true;
-    logger.info('MongoDB connected successfully');
-    
-    return mongoose.connection;
+    logger.info('PostgreSQL connected successfully');
+    return pool;
   } catch (error) {
     logger.error(`Database connection error: ${error.message}`);
     throw error;
   }
 };
 
-/**
- * Get Mongoose connection instance
- */
 const getConnection = () => {
-  if (!isDbConnected) {
+  if (!isDbConnected || !pool) {
     throw new Error('Database not initialized. Call initializeConnection first.');
   }
-  return mongoose.connection;
+
+  return pool;
 };
 
-/**
- * Check if database is connected
- */
-const isConnected = () => {
-  return isDbConnected && mongoose.connection.readyState === 1;
-};
+const isConnected = () => isDbConnected;
 
-/**
- * Close database connection
- */
 const closeConnection = async () => {
   try {
-    if (isDbConnected) {
-      await mongoose.disconnect();
+    if (pool) {
+      await pool.end();
+      pool = null;
       isDbConnected = false;
-      logger.info('MongoDB disconnected');
+      logger.info('PostgreSQL disconnected');
     }
   } catch (error) {
     logger.error(`Error closing database connection: ${error.message}`);
@@ -73,28 +100,12 @@ const closeConnection = async () => {
   }
 };
 
-/**
- * Query helper - returns the model for the specified collection
- * Usage: const bookings = await query('Booking').find();
- * 
- * @param {string} modelName - Name of the Mongoose model
- * @returns {Object} Mongoose model
- */
-const query = (modelName) => {
-  if (!isDbConnected) {
+const query = async (text, params = []) => {
+  if (!isDbConnected || !pool) {
     throw new Error('Database not initialized');
   }
-  
-  // Import models
-  const models = {
-    'Booking': require('../models/Booking'),
-  };
 
-  if (!models[modelName]) {
-    throw new Error(`Model "${modelName}" not found`);
-  }
-
-  return models[modelName];
+  return pool.query(text, params);
 };
 
 module.exports = {

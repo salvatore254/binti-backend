@@ -3,8 +3,9 @@ const express = require("express");
 const router = express.Router();
 const TransportService = require("../services/TransportService");
 const EmailService = require("../services/EmailService");
-const Booking = require("../models/Booking");
+const bookingRepository = require("../repositories/bookingRepository");
 const { v4: uuidv4 } = require("uuid");
+const { buildPublicBookingReference } = require("../utils/referenceFormatter");
 
 // DIAGNOSTIC: Log that routes file loaded successfully
 console.log("[BOOKING] Routes loaded successfully");
@@ -18,6 +19,57 @@ try {
   console.warn("[BOOKING] Failed to initialize EmailService:", err.message);
 }
 
+const getPesapalService = () => {
+  const PesapalService = require("../services/PesapalService");
+  return new PesapalService();
+};
+
+const normalizePesapalStatus = (status) => String(status || '').trim().toUpperCase();
+
+const isPesapalCompletedStatus = (status) => {
+  const normalizedStatus = normalizePesapalStatus(status);
+  return normalizedStatus === 'COMPLETED' || normalizedStatus === 'PAID';
+};
+
+const getExpectedDepositAmount = (booking) => {
+  if (Number.isFinite(Number(booking.depositAmount)) && Number(booking.depositAmount) > 0) {
+    return Math.round(Number(booking.depositAmount));
+  }
+
+  return Math.round(Number(booking.totalAmount || 0) * 0.8);
+};
+
+const getAllowedPaymentAmounts = (booking) => {
+  const depositAmount = getExpectedDepositAmount(booking);
+  const totalAmount = Math.round(Number(booking.totalAmount || 0));
+
+  return Array.from(new Set([
+    depositAmount,
+    totalAmount,
+  ].filter((amount) => Number.isFinite(amount) && amount > 0)));
+};
+
+const resolveRequestedPaymentAmount = (booking, requestedAmount, paymentAmountType) => {
+  if (paymentAmountType === 'full') {
+    return Math.round(Number(booking.totalAmount || 0));
+  }
+
+  if (paymentAmountType === 'deposit' || requestedAmount === undefined || requestedAmount === null || requestedAmount === '') {
+    return getExpectedDepositAmount(booking);
+  }
+
+  const roundedAmount = Math.round(Number(requestedAmount));
+  if (!Number.isFinite(roundedAmount) || roundedAmount <= 0) {
+    throw new Error('Invalid payment amount supplied.');
+  }
+
+  if (!getAllowedPaymentAmounts(booking).includes(roundedAmount)) {
+    throw new Error(`Payment amount mismatch. Use ${getAllowedPaymentAmounts(booking).join(' or ')}.`);
+  }
+
+  return roundedAmount;
+};
+
 const createHttpError = (message, statusCode = 400) => {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -30,6 +82,43 @@ const buildPesapalOrderRef = (bookingId) => {
     .slice(-16);
   const suffix = uuidv4().replace(/-/g, '').slice(0, 8);
   return `ORD_${bookingRef}_${suffix}`;
+};
+
+const sendPostPaymentArtifacts = async (booking, paidAmount, transactionId) => {
+  if (!booking) {
+    return;
+  }
+
+  const paymentDetails = {
+    paidAmount: Math.round(Number(paidAmount || booking.depositAmount || 0)),
+    remainingAmount: Math.max(Math.round(Number(booking.totalAmount || 0)) - Math.round(Number(paidAmount || booking.depositAmount || 0)), 0),
+    transactionId: transactionId || booking.transactionId || null,
+  };
+
+  if (emailService) {
+    try {
+      await emailService.sendPaymentConfirmation({
+        ...booking,
+        ...paymentDetails,
+      }, paymentDetails.transactionId);
+    } catch (emailError) {
+      console.warn('[BOOKING] Payment confirmation email failed:', emailError.message);
+    }
+  }
+
+  try {
+    const InvoiceService = require('../services/InvoiceService');
+    const invoiceService = new InvoiceService();
+    const invoiceSent = await invoiceService.sendInvoice({
+      ...booking,
+      ...paymentDetails,
+    });
+    if (invoiceSent) {
+      await bookingRepository.markInvoiceSent(booking.id);
+    }
+  } catch (invoiceError) {
+    console.warn('[BOOKING] Invoice sending failed:', invoiceError.message);
+  }
 };
 
 const normalizeBoolean = (value) => value === true || value === "yes";
@@ -386,45 +475,45 @@ router.post("/confirm", async (req, res) => {
 
     // Create booking object
     const bookingId = uuidv4();
-    const booking = new Booking({
-      id: bookingId,
-      fullname,
-      phone,
-      mpesaPhone,
-      email,
-      tentConfigs,
-      tentType,
-      tentSize,
-      sections,
-      aframeSections: sections,
-      lighting: lighting === "yes" || lighting === true,
-      transportArrangement: transportArrangement || 'own',
-      transportVenue: transportVenue || '',
-      pasound: pasound === "yes" || pasound === true,
-      dancefloor: dancefloor === "yes" || dancefloor === true,
-      stagepodium: stagepodium === "yes" || stagepodium === true,
-      welcomesigns: welcomesigns === "yes" || welcomesigns === true,
-      decor: decor === "yes" || decor === true,
-      venue,
-      location,
-      setupTime,
-      eventDate: eventDate ? new Date(eventDate) : new Date(),
-      packageName,
-      packageBasePrice,
-      additionalInfo,
-      totalAmount: total,
-      breakdown,
-      status: "pending",
-      paymentMethod: paymentMethod || "mpesa",
-      termsAccepted: true,
-      termsAcceptedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
+    let booking;
 
-    // Save booking to MongoDB BEFORE responding
+    // Save booking to PostgreSQL BEFORE responding
     try {
-      await booking.save();
+      booking = await bookingRepository.create({
+        _id: bookingId,
+        fullname,
+        phone,
+        mpesaPhone,
+        email,
+        tentConfigs,
+        tentType,
+        tentSize,
+        sections,
+        aframeSections: sections,
+        lighting: lighting === "yes" || lighting === true,
+        transportArrangement: transportArrangement || 'own',
+        transportVenue: transportVenue || '',
+        pasound: pasound === "yes" || pasound === true,
+        dancefloor: dancefloor === "yes" || dancefloor === true,
+        stagepodium: stagepodium === "yes" || stagepodium === true,
+        welcomesigns: welcomesigns === "yes" || welcomesigns === true,
+        decor: decor === "yes" || decor === true,
+        venue,
+        location,
+        setupTime,
+        eventDate: eventDate ? new Date(eventDate) : new Date(),
+        packageName,
+        packageBasePrice,
+        additionalInfo,
+        totalAmount: total,
+        breakdown,
+        status: "pending",
+        paymentMethod: paymentMethod || "mpesa",
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
       console.log(`[BOOKING] Saved to database with ID: ${bookingId}`);
     } catch (dbErr) {
       console.error('[BOOKING] Failed to save to database:', dbErr.message);
@@ -445,8 +534,9 @@ router.post("/confirm", async (req, res) => {
     res.json({
       success: true,
       message: "Booking confirmed. Confirmation will be sent to your email.",
-      bookingId: booking._id || bookingId,
-      booking: booking.toJSON(),
+      bookingId: booking.id,
+      bookingReference: buildPublicBookingReference(booking.id),
+      booking,
       depositAmount: depositAmount,
       remainingAmount: remainingAmount,
       status: "processing",
@@ -501,7 +591,7 @@ router.get("/payment-status/:bookingId", async (req, res) => {
     }
 
     // Fetch booking by ID
-    const booking = await Booking.findById(bookingId);
+    let booking = await bookingRepository.findById(bookingId);
 
     if (!booking) {
       return res.status(404).json({
@@ -511,14 +601,47 @@ router.get("/payment-status/:bookingId", async (req, res) => {
       });
     }
 
+    let syncedWithGateway = false;
+
+    if (
+      booking.status === 'pending' &&
+      booking.paymentMethod === 'pesapal' &&
+      booking.pesapalOrderTrackingId
+    ) {
+      try {
+        const pesapalService = getPesapalService();
+        const statusCheck = await pesapalService.getTransactionStatus(booking.pesapalOrderTrackingId);
+
+        console.log('[PAYMENT-STATUS] Pesapal gateway sync result:', {
+          bookingId,
+          orderTrackingId: booking.pesapalOrderTrackingId,
+          status: statusCheck.status,
+          transactionTrackingId: statusCheck.transactionTrackingId || null,
+        });
+
+        if (isPesapalCompletedStatus(statusCheck.status)) {
+          booking = await bookingRepository.markPaid(booking.id, {
+            paymentMethod: 'pesapal',
+            transactionId: statusCheck.transactionTrackingId || statusCheck.orderTrackingId,
+            paidAmount: statusCheck.amount,
+          });
+          syncedWithGateway = true;
+          await sendPostPaymentArtifacts(booking, statusCheck.amount, booking.transactionId);
+        }
+      } catch (pesapalError) {
+        console.warn('[PAYMENT-STATUS] Pesapal sync failed:', pesapalError.message);
+      }
+    }
+
     // Return payment status
     const queryTime = Date.now() - startTime;
     return res.status(200).json({
       success: true,
       status: booking.status, // 'pending', 'paid', 'payment_failed', 'completed', 'cancelled'
-      bookingId: booking._id,
+      bookingId: booking.id,
       paymentMethod: booking.paymentMethod,
       transactionId: booking.transactionId,
+      syncedWithGateway,
       responseTime: `${queryTime}ms`
     });
 
@@ -541,7 +664,7 @@ router.get("/payment-status/:bookingId", async (req, res) => {
  */
 router.get("/pesapal-iframe", async (req, res) => {
   try {
-    const { bookingId } = req.query;
+    const { bookingId, amount, paymentAmount } = req.query;
 
     if (!bookingId) {
       return res.status(400).json({
@@ -551,7 +674,7 @@ router.get("/pesapal-iframe", async (req, res) => {
     }
 
     // Fetch the booking from database
-    const booking = await Booking.findById(bookingId);
+    const booking = await bookingRepository.findById(bookingId);
 
     if (!booking) {
       return res.status(404).json({
@@ -568,20 +691,27 @@ router.get("/pesapal-iframe", async (req, res) => {
       depositAmount: booking.depositAmount
     });
 
+    let requestedAmount;
+    try {
+      requestedAmount = resolveRequestedPaymentAmount(booking, amount, paymentAmount);
+    } catch (validationError) {
+      return res.status(400).json({
+        success: false,
+        message: validationError.message,
+        allowedAmounts: getAllowedPaymentAmounts(booking)
+      });
+    }
+
     // Initialize Pesapal payment with booking details
     const orderRef = buildPesapalOrderRef(bookingId);
 
     // Initialize payment service
-    const useMockPesapal = process.env.USE_PESAPAL_MOCK === 'true';
-    const PesapalService = useMockPesapal 
-      ? require("../services/PesapalServiceMock")
-      : require("../services/PesapalService");
-    
+    const PesapalService = require("../services/PesapalService");
     const pesapalService = new PesapalService();
 
     // Create payment order
     const paymentResult = await pesapalService.createOrder({
-      amount: booking.depositAmount, // Use deposit amount (80%)
+      amount: requestedAmount,
       currency: 'KES',
       orderRef: orderRef,
       description: `Binti Events Booking - ${booking.fullname}`,
@@ -591,11 +721,10 @@ router.get("/pesapal-iframe", async (req, res) => {
       lastName: booking.fullname.split(' ').slice(1).join(' ') || 'Name'
     });
 
-    await Booking.findByIdAndUpdate(bookingId, {
+    await bookingRepository.updateById(bookingId, {
       paymentMethod: 'pesapal',
       pesapalOrderRef: orderRef,
       pesapalOrderTrackingId: paymentResult.orderTrackingId,
-      updatedAt: new Date(),
     });
 
     console.log(`[BOOKING] Pesapal order created:`, {
@@ -614,8 +743,9 @@ router.get("/pesapal-iframe", async (req, res) => {
       url: paymentResult.url || paymentResult.iframe_url,
       orderTrackingId: paymentResult.orderTrackingId,
       orderRef: orderRef,
+      requestedAmount,
       booking: {
-        id: booking._id,
+        id: booking.id,
         fullname: booking.fullname,
         email: booking.email,
         totalAmount: booking.totalAmount,

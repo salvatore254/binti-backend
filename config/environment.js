@@ -3,19 +3,21 @@
  * Manages all environment variables and configuration settings
  */
 
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 const config = {
   // Server
   PORT: process.env.PORT,
   NODE_ENV: process.env.NODE_ENV,
   
-  // Database (MongoDB)
-  DB_HOST: process.env.DB_HOST,
-  DB_PORT: process.env.DB_PORT,
-  DB_NAME: process.env.DB_NAME,
-  DB_USER: process.env.DB_USER,
-  DB_PASSWORD: process.env.DB_PASSWORD,
+  // Database (PostgreSQL)
+  DATABASE_URL: process.env.DATABASE_URL,
+  PGHOST: process.env.PGHOST,
+  PGPORT: process.env.PGPORT,
+  PGDATABASE: process.env.PGDATABASE,
+  PGUSER: process.env.PGUSER,
+  PGPASSWORD: process.env.PGPASSWORD,
+  DB_SSL: process.env.DB_SSL === 'true',
   
   // Payment Providers
   PESAPAL_CONSUMER_KEY: process.env.PESAPAL_CONSUMER_KEY,
@@ -30,6 +32,13 @@ const config = {
   MPESA_PASSKEY: process.env.MPESA_PASSKEY,
   MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL,
   MPESA_USE_SANDBOX: process.env.MPESA_USE_SANDBOX,
+  MPESA_PROVIDER: process.env.MPESA_PROVIDER,
+
+  MEXPRESS_BASE_URL: process.env.MEXPRESS_BASE_URL,
+  MEXPRESS_PUBLIC_KEY: process.env.MEXPRESS_PUBLIC_KEY,
+  MEXPRESS_SECRET_KEY: process.env.MEXPRESS_SECRET_KEY,
+  MEXPRESS_RETURN_URL: process.env.MEXPRESS_RETURN_URL,
+  MEXPRESS_WEBHOOK_URL: process.env.MEXPRESS_WEBHOOK_URL,
   
   // Email Configuration
   EMAIL_USER: process.env.EMAIL_USER,
