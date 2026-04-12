@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: backend
+    name: binti-events-backend
     runtime: node
     plan: starter
     buildCommand: npm install
@@ -17,15 +17,27 @@ services:
       - key: PESAPAL_USE_SANDBOX
         value: "true"
       - key: FRONTEND_URL
-        value: https://bintievents.vercel.app
+        value: https://binti-events-backend.onrender.com
+      - key: APP_URL
+        value: https://binti-events-backend.onrender.com
+      - key: BACKEND_URL
+        value: https://binti-events-backend.onrender.com
       - key: DATABASE_URL
         value: ${DATABASE_URL}
+      - key: DB_SSL
+        value: "false"
       - key: PESAPAL_CONSUMER_KEY
         value: ${PESAPAL_CONSUMER_KEY}
       - key: PESAPAL_CONSUMER_SECRET
         value: ${PESAPAL_CONSUMER_SECRET}
       - key: PESAPAL_REDIRECT_URL
         value: ${PESAPAL_REDIRECT_URL}
+      - key: PESAPAL_CALLBACK_URL
+        value: ${PESAPAL_CALLBACK_URL}
+      - key: PESAPAL_IPN_URL
+        value: ${PESAPAL_IPN_URL}
+      - key: MPESA_PROVIDER
+        value: ${MPESA_PROVIDER}
       - key: MPESA_CONSUMER_KEY
         value: ${MPESA_CONSUMER_KEY}
       - key: MPESA_CONSUMER_SECRET
@@ -38,11 +50,19 @@ services:
         value: ${MPESA_CALLBACK_URL}
       - key: MPESA_PASSKEY
         value: ${MPESA_PASSKEY}
+      - key: MEXPRESS_BASE_URL
+        value: ${MEXPRESS_BASE_URL}
+      - key: MEXPRESS_PUBLIC_KEY
+        value: ${MEXPRESS_PUBLIC_KEY}
+      - key: MEXPRESS_SECRET_KEY
+        value: ${MEXPRESS_SECRET_KEY}
+      - key: MEXPRESS_RETURN_URL
+        value: ${MEXPRESS_RETURN_URL}
+      - key: MEXPRESS_WEBHOOK_URL
+        value: ${MEXPRESS_WEBHOOK_URL}
       - key: RESEND_API_KEY
         value: ${RESEND_API_KEY}
       - key: EMAIL_FROM
         value: "Binti Events <onboarding@resend.dev>"
       - key: ADMIN_EMAIL
         value: ${ADMIN_EMAIL}
-      - key: BACKEND_URL
-        value: ${BACKEND_URL}

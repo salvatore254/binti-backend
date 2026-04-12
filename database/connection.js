@@ -71,7 +71,14 @@ const initializeConnection = async () => {
     logger.info('PostgreSQL connected successfully');
     return pool;
   } catch (error) {
-    logger.error(`Database connection error: ${error.message}`);
+    const errorSummary = [
+      error.message || error.code || 'Unknown database connection error',
+      error.code ? `code=${error.code}` : null,
+      error.detail ? `detail=${error.detail}` : null,
+      error.errno ? `errno=${error.errno}` : null,
+    ].filter(Boolean).join(' | ');
+
+    logger.error(`Database connection error: ${errorSummary}`);
     throw error;
   }
 };
