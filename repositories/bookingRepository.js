@@ -674,6 +674,29 @@ class BookingRepository {
     });
   }
 
+  async claimInvoiceDispatch(id, invoiceSentAt = new Date()) {
+    const result = await query(
+      `UPDATE bookings
+       SET invoice_sent = TRUE,
+           invoice_sent_at = $1,
+           updated_at = $2
+       WHERE id = $3
+         AND status = $4
+         AND invoice_sent IS NOT TRUE
+       RETURNING *`,
+      [invoiceSentAt, invoiceSentAt, id, 'paid']
+    );
+
+    return (await hydrateBookings(result.rows))[0] || null;
+  }
+
+  async releaseInvoiceDispatch(id) {
+    return this.updateById(id, {
+      invoiceSent: false,
+      invoiceSentAt: null,
+    });
+  }
+
   async findPaidWithoutInvoice() {
     const result = await query(
       'SELECT * FROM bookings WHERE status = $1 AND invoice_sent IS NOT TRUE ORDER BY updated_at DESC',

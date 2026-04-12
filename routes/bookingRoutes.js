@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const TransportService = require("../services/TransportService");
 const EmailService = require("../services/EmailService");
+const WhatsAppService = require("../services/WhatsAppService");
 const bookingRepository = require("../repositories/bookingRepository");
 const { v4: uuidv4 } = require("uuid");
 const { buildPublicBookingReference } = require("../utils/referenceFormatter");
@@ -23,6 +24,8 @@ const getPesapalService = () => {
   const PesapalService = require("../services/PesapalService");
   return new PesapalService();
 };
+
+const getWhatsAppService = () => WhatsAppService();
 
 const normalizePesapalStatus = (status) => String(status || '').trim().toUpperCase();
 
@@ -95,17 +98,6 @@ const sendPostPaymentArtifacts = async (booking, paidAmount, transactionId) => {
     transactionId: transactionId || booking.transactionId || null,
   };
 
-  if (emailService) {
-    try {
-      await emailService.sendPaymentConfirmation({
-        ...booking,
-        ...paymentDetails,
-      }, paymentDetails.transactionId);
-    } catch (emailError) {
-      console.warn('[BOOKING] Payment confirmation email failed:', emailError.message);
-    }
-  }
-
   try {
     const InvoiceService = require('../services/InvoiceService');
     const invoiceService = new InvoiceService();
@@ -114,10 +106,24 @@ const sendPostPaymentArtifacts = async (booking, paidAmount, transactionId) => {
       ...paymentDetails,
     });
     if (invoiceSent) {
-      await bookingRepository.markInvoiceSent(booking.id);
+      console.log('[BOOKING] Final client invoice notification sent successfully');
     }
   } catch (invoiceError) {
     console.warn('[BOOKING] Invoice sending failed:', invoiceError.message);
+  }
+
+  try {
+    const whatsAppService = getWhatsAppService();
+    const adminAlertResult = await whatsAppService.sendAdminAlert({
+      ...booking,
+      ...paymentDetails,
+    });
+
+    if (!adminAlertResult.success) {
+      console.warn('[BOOKING] Admin WhatsApp alert failed:', adminAlertResult.message || adminAlertResult.error);
+    }
+  } catch (whatsAppError) {
+    console.warn('[BOOKING] Admin WhatsApp alert failed:', whatsAppError.message);
   }
 };
 

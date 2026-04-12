@@ -6,6 +6,7 @@ const MpesaService = require("../services/MpesaService");
 const MexpressService = require("../services/MexpressService");
 const PesapalService = require("../services/PesapalService");
 const EmailService = require("../services/EmailService");
+const WhatsAppService = require("../services/WhatsAppService");
 const bookingRepository = require("../repositories/bookingRepository");
 
 // Initialize payment services (production or sandbox based on NODE_ENV)
@@ -15,6 +16,7 @@ const pesapalService = new PesapalService();
 
 // Get email service instance lazily when needed
 const getEmailService = () => EmailService();
+const getWhatsAppService = () => WhatsAppService();
 
 const testEndpointsEnabled = process.env.ENABLE_TEST_ENDPOINTS === 'true';
 
@@ -130,22 +132,6 @@ const sendPostPaymentArtifacts = async (booking, paidAmount, transactionId) => {
   };
 
   try {
-    const emailService = getEmailService();
-    const emailResult = await emailService.sendPaymentConfirmation({
-      ...booking,
-      ...paymentDetails,
-    }, paymentDetails.transactionId);
-
-    if (emailResult.success) {
-      console.log('[PAYMENT] Payment confirmation email sent successfully');
-    } else {
-      console.warn('[PAYMENT] Payment confirmation email failed:', emailResult.error);
-    }
-  } catch (emailError) {
-    console.error('[PAYMENT] Error sending payment confirmation email:', emailError.message);
-  }
-
-  try {
     const InvoiceService = require('../services/InvoiceService');
     const invoiceService = new InvoiceService();
     const invoiceSent = await invoiceService.sendInvoice({
@@ -153,11 +139,26 @@ const sendPostPaymentArtifacts = async (booking, paidAmount, transactionId) => {
       ...paymentDetails,
     });
     if (invoiceSent) {
-      await bookingRepository.markInvoiceSent(booking.id);
-      console.log('[PAYMENT] Invoice sent successfully');
+      console.log('[PAYMENT] Final client invoice notification sent successfully');
     }
   } catch (invoiceErr) {
     console.error('[PAYMENT] Invoice error:', invoiceErr.message);
+  }
+
+  try {
+    const whatsAppService = getWhatsAppService();
+    const adminAlertResult = await whatsAppService.sendAdminAlert({
+      ...booking,
+      ...paymentDetails,
+    });
+
+    if (adminAlertResult.success) {
+      console.log('[PAYMENT] Admin WhatsApp alert sent successfully');
+    } else {
+      console.warn('[PAYMENT] Admin WhatsApp alert failed:', adminAlertResult.message || adminAlertResult.error);
+    }
+  } catch (whatsAppErr) {
+    console.error('[PAYMENT] Error sending admin WhatsApp alert:', whatsAppErr.message);
   }
 };
 
@@ -601,28 +602,20 @@ router.post('/mexpress-callback', async (req, res) => {
         return res.status(200).json({ ok: true });
       }
 
+      const wasAlreadyPaid = booking.status === 'paid';
       booking = await bookingRepository.markPaid(booking.id, {
         paymentMethod: 'mpesa',
         transactionId: callbackData.receipt || booking.transactionId || callbackData.orderId,
+        paidAmount: callbackData.amount,
       });
 
-      try {
-        const emailService = getEmailService();
-        const emailBooking = bookingCache[booking.checkoutRequestId] || booking;
-        await emailService.sendPaymentConfirmation(emailBooking, booking.transactionId);
-      } catch (emailError) {
-        console.error('[MEXPRESS CALLBACK] Email error:', emailError.message);
-      }
-
-      try {
-        const InvoiceService = require('../services/InvoiceService');
-        const invoiceService = new InvoiceService();
-        const invoiceSent = await invoiceService.sendInvoice(booking);
-        if (invoiceSent) {
-          await bookingRepository.markInvoiceSent(booking.id);
-        }
-      } catch (invoiceError) {
-        console.error('[MEXPRESS CALLBACK] Invoice error:', invoiceError.message);
+      if (!wasAlreadyPaid) {
+        await sendPostPaymentArtifacts({
+          ...(bookingCache[booking.checkoutRequestId] || {}),
+          ...booking,
+        }, callbackData.amount, booking.transactionId);
+      } else {
+        console.log('[MEXPRESS CALLBACK] Booking already marked paid, skipping duplicate notification send');
       }
     } else if (callbackData.status === 'failed') {
       await bookingRepository.markPaymentFailed(booking.id, {
@@ -792,53 +785,16 @@ router.post("/test/simulate-success", async (req, res) => {
 
     console.log("[TEST] Simulated success for booking:", bookingId);
 
-    // Send WhatsApp notifications
-    let whatsappResult = { customer: null, admin: null };
-    try {
-      const WhatsAppService = require('../services/WhatsAppService');
-      const whatsAppService = WhatsAppService();
-      const customerWA = await whatsAppService.sendBookingConfirmation(paidBooking);
-      whatsappResult.customer = customerWA;
-      console.log("[TEST] WhatsApp customer result:", customerWA);
-      const adminWA = await whatsAppService.sendAdminAlert(paidBooking);
-      whatsappResult.admin = adminWA;
-      console.log("[TEST] WhatsApp admin result:", adminWA);
-    } catch (waErr) {
-      console.error("[TEST] WhatsApp error:", waErr.message);
-    }
-
-    // Send confirmation email + invoice
-    let emailResult = { success: false, error: "not attempted" };
-    let invoiceResult = false;
-    try {
-      const emailService = getEmailService();
-      emailResult = await emailService.sendPaymentConfirmation(paidBooking, fakeReceipt);
-      console.log("[TEST] Email result:", emailResult);
-    } catch (emailErr) {
-      console.error("[TEST] Email error:", emailErr.message);
-      emailResult = { success: false, error: emailErr.message };
-    }
-
-    try {
-      const InvoiceService = require('../services/InvoiceService');
-      const invoiceService = new InvoiceService();
-      invoiceResult = await invoiceService.sendInvoice(paidBooking);
-      console.log("[TEST] Invoice result:", invoiceResult);
-      if (invoiceResult) {
-        paidBooking = await bookingRepository.markInvoiceSent(paidBooking.id);
-        console.log("[TEST] invoiceSent flag set to true");
-      }
-    } catch (invoiceErr) {
-      console.error("[TEST] Invoice error:", invoiceErr.message);
-    }
+    await sendPostPaymentArtifacts(paidBooking, paidBooking.paidAmount, fakeReceipt);
 
     return res.json({
       success: true,
       message: "Payment simulated successfully",
       booking: { id: paidBooking.id, status: paidBooking.status, email: paidBooking.email },
-      email: emailResult,
-      invoice: invoiceResult,
-      whatsapp: whatsappResult,
+      notifications: {
+        client: ['booking confirmation email', 'invoice email'],
+        admin: ['new booking email', 'paid booking WhatsApp alert'],
+      },
       receipt: fakeReceipt
     });
   } catch (error) {

@@ -8,6 +8,7 @@
 const EmailService = require('./EmailService');
 const logger = require('../utils/logger');
 const { jsPDF } = require('jspdf');
+const bookingRepository = require('../repositories/bookingRepository');
 const { buildInvoiceReference } = require('../utils/referenceFormatter');
 
 class InvoiceService {
@@ -326,7 +327,7 @@ class InvoiceService {
     doc.setTextColor(...gray);
 
     const terms = [
-      'Client by signing of the contract & making payment authorizes Binti Tents & Events to supply the above facilities',
+      'Client by making payment authorizes Binti Tents & Events to supply the above facilities',
       'Payment of at least 80% confirms your booking upon signing below; balance to be upon set up',
       'Cancellation policy: Cancellation must be in writing. A month before event: 50% refund, 2 weeks before: 25% refund; Less than a week: non refundable',
       'Client agrees to safeguard the equipment and be solely responsible for any loss or damage of the same that may occur during period of hire',
@@ -343,6 +344,38 @@ class InvoiceService {
     y += 8;
 
     // ─── ISSUED BY + THANK YOU IMAGE ───
+    const issuedByHeight = 11;
+    const maxImgWidth = 90;
+    const maxImgHeight = 45;
+    const minImgHeight = 18;
+    let thankYouImageLayout = null;
+
+    if (thankYouBase64) {
+      const imageData = 'data:image/png;base64,' + thankYouBase64;
+      const imageProps = doc.getImageProperties(imageData);
+      const baseScale = Math.min(maxImgWidth / imageProps.width, maxImgHeight / imageProps.height);
+      thankYouImageLayout = {
+        imageData,
+        aspectRatio: imageProps.width / imageProps.height,
+        width: imageProps.width * baseScale,
+        height: imageProps.height * baseScale,
+      };
+
+      const remainingHeight = bottomLimit - y;
+      const preferredBlockHeight = issuedByHeight + thankYouImageLayout.height + 4;
+      const minimumBlockHeight = issuedByHeight + minImgHeight + 4;
+
+      if (remainingHeight < minimumBlockHeight) {
+        ensurePageSpace(preferredBlockHeight);
+      } else if (remainingHeight < preferredBlockHeight) {
+        const maxFittableHeight = Math.max(remainingHeight - issuedByHeight - 4, minImgHeight);
+        thankYouImageLayout.height = Math.min(thankYouImageLayout.height, maxFittableHeight);
+        thankYouImageLayout.width = thankYouImageLayout.height * thankYouImageLayout.aspectRatio;
+      }
+    } else {
+      ensurePageSpace(issuedByHeight + 24);
+    }
+
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(...black);
@@ -350,29 +383,20 @@ class InvoiceService {
     y += 5;
     doc.setFont('helvetica', 'bold');
     doc.text('Binti', pageWidth - margin, y, { align: 'right' });
-
     y += 6;
 
-    // Thank you image (centered, matching the quote PDF)
-    if (thankYouBase64) {
-      const imageData = 'data:image/png;base64,' + thankYouBase64;
-      const imageProps = doc.getImageProperties(imageData);
-      const maxImgWidth = 90;
-      const maxImgHeight = 45;
-      const widthScale = maxImgWidth / imageProps.width;
-      const heightScale = maxImgHeight / imageProps.height;
-      const scale = Math.min(widthScale, heightScale);
-      const imgWidth = imageProps.width * scale;
-      const imgHeight = imageProps.height * scale;
-
-      ensurePageSpace(18 + imgHeight);
-
-      const imgX = (pageWidth - imgWidth) / 2;
-      doc.addImage(imageData, 'PNG', imgX, y, imgWidth, imgHeight);
-      y += imgHeight + 4;
+    if (thankYouImageLayout) {
+      const imgX = (pageWidth - thankYouImageLayout.width) / 2;
+      doc.addImage(
+        thankYouImageLayout.imageData,
+        'PNG',
+        imgX,
+        y,
+        thankYouImageLayout.width,
+        thankYouImageLayout.height
+      );
+      y += thankYouImageLayout.height + 4;
     } else {
-      ensurePageSpace(24);
-
       // Fallback text if image couldn't load
       y += 4;
       doc.setTextColor(255, 130, 171);
@@ -587,6 +611,9 @@ class InvoiceService {
    * Send invoice to customer as a PDF attachment
    */
   async sendInvoice(booking) {
+    let bookingId = null;
+    let invoiceClaimed = false;
+
     try {
       if (!booking || booking.status !== 'paid') {
         throw new Error('Booking must have paid status to send invoice');
@@ -599,31 +626,56 @@ class InvoiceService {
         return false;
       }
 
-      console.log(`[INVOICE] Generating PDF invoice for booking ${booking._id}...`);
+      bookingId = booking._id || booking.id;
+      if (!bookingId) {
+        throw new Error('Booking must have an id to send invoice');
+      }
 
-      const pdfBuffer = await this.generateInvoicePDF(booking);
-      const invoiceNo = buildInvoiceReference(booking._id || booking.id || '');
+      const claimedBooking = await bookingRepository.claimInvoiceDispatch(bookingId);
+      if (!claimedBooking) {
+        console.log(`[INVOICE] Invoice already claimed or sent for booking ${bookingId}, skipping`);
+        return false;
+      }
+
+      invoiceClaimed = true;
+      const invoiceBooking = {
+        ...booking,
+        ...claimedBooking,
+      };
+
+      console.log(`[INVOICE] Generating PDF invoice for booking ${invoiceBooking._id}...`);
+
+      const pdfBuffer = await this.generateInvoicePDF(invoiceBooking);
+      const invoiceNo = buildInvoiceReference(invoiceBooking._id || invoiceBooking.id || '');
       const pdfFilename = `Invoice_${invoiceNo}.pdf`;
 
-      console.log(`[INVOICE] PDF generated (${pdfBuffer.length} bytes), sending to ${booking.email}...`);
+      console.log(`[INVOICE] PDF generated (${pdfBuffer.length} bytes), sending to ${invoiceBooking.email}...`);
 
-      const paymentSummary = this.getPaymentSummary(booking);
+      const paymentSummary = this.getPaymentSummary(invoiceBooking);
 
       await this.emailService.sendEmailWithAttachment({
-        to: booking.email,
+        to: invoiceBooking.email,
         subject: `Invoice - Binti Events (${invoiceNo})`,
-        html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#333;background:#f5f5f5;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:4px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);"><tr><td style="padding:25px 30px;border-bottom:3px solid #FFC0FA;"><img src="https://bintievents.vercel.app/images/logo1.png" alt="Binti Events" width="120" style="display:block;max-width:120px;height:auto;"></td></tr><tr><td style="padding:25px 30px;"><p style="font-size:15px;margin:0 0 6px 0;">Dear <strong>${booking.fullname || 'Valued Customer'}</strong>,</p><p style="font-size:13px;color:#666;margin:0 0 18px 0;">Thank you for your payment. Your invoice from Binti Events is attached as a PDF.</p><table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;margin-bottom:18px;"><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;width:40%;">Invoice No</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">${invoiceNo}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">${paymentSummary.paidLabel}</td><td style="padding:8px 0;color:#4CAF50;font-weight:700;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.paidAmount.toLocaleString()}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">${paymentSummary.remainingLabel}</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.remainingAmount.toLocaleString()}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Total Amount</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.totalAmount.toLocaleString()}</td></tr>${booking.transactionId ? `<tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Transaction ID</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">${booking.transactionId}</td></tr>` : ''}<tr><td style="padding:8px 0;color:#666;">Venue</td><td style="padding:8px 0;color:#333;font-weight:600;text-align:right;">${booking.venue || 'N/A'}</td></tr></table><p style="font-size:13px;color:#666;margin:0 0 6px 0;">For any questions, please contact us:</p><p style="font-size:13px;color:#333;margin:0;">${this.companyInfo.phone} | ${this.companyInfo.email}</p></td></tr><tr><td style="background:#fafafa;border-top:2px solid #FFC0FA;padding:20px 30px;text-align:center;"><p style="font-size:12px;color:#666;margin:0 0 8px 0;"><strong style="color:#333;">Binti Events</strong></p><p style="font-size:11px;color:#999;margin:0;"><a href="https://www.instagram.com/bintievents/" style="color:#7851A9;text-decoration:none;">Instagram</a> &nbsp; <a href="https://www.facebook.com/bintievents/" style="color:#7851A9;text-decoration:none;">Facebook</a> &nbsp; <a href="https://www.tiktok.com/@bintievents" style="color:#7851A9;text-decoration:none;">TikTok</a></p></td></tr></table></td></tr></table></body></html>`,
+        html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#333;background:#f5f5f5;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:4px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);"><tr><td style="padding:25px 30px;border-bottom:3px solid #FFC0FA;"><img src="https://bintievents.vercel.app/images/logo1.png" alt="Binti Events" width="120" style="display:block;max-width:120px;height:auto;"></td></tr><tr><td style="padding:25px 30px;"><p style="font-size:15px;margin:0 0 6px 0;">Dear <strong>${invoiceBooking.fullname || 'Valued Customer'}</strong>,</p><p style="font-size:13px;color:#666;margin:0 0 18px 0;">Thank you for your payment. Your invoice from Binti Events is attached as a PDF.</p><table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;margin-bottom:18px;"><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;width:40%;">Invoice No</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">${invoiceNo}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">${paymentSummary.paidLabel}</td><td style="padding:8px 0;color:#4CAF50;font-weight:700;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.paidAmount.toLocaleString()}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">${paymentSummary.remainingLabel}</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.remainingAmount.toLocaleString()}</td></tr><tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Total Amount</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">KES ${paymentSummary.totalAmount.toLocaleString()}</td></tr>${invoiceBooking.transactionId ? `<tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0;">Transaction ID</td><td style="padding:8px 0;color:#333;font-weight:600;border-bottom:1px solid #f0f0f0;text-align:right;">${invoiceBooking.transactionId}</td></tr>` : ''}<tr><td style="padding:8px 0;color:#666;">Venue</td><td style="padding:8px 0;color:#333;font-weight:600;text-align:right;">${invoiceBooking.venue || 'N/A'}</td></tr></table><p style="font-size:13px;color:#666;margin:0 0 6px 0;">For any questions, please contact us:</p><p style="font-size:13px;color:#333;margin:0;">${this.companyInfo.phone} | ${this.companyInfo.email}</p></td></tr><tr><td style="background:#fafafa;border-top:2px solid #FFC0FA;padding:20px 30px;text-align:center;"><p style="font-size:12px;color:#666;margin:0 0 8px 0;"><strong style="color:#333;">Binti Events</strong></p><p style="font-size:11px;color:#999;margin:0;"><a href="https://www.instagram.com/bintievents/" style="color:#7851A9;text-decoration:none;">Instagram</a> &nbsp; <a href="https://www.facebook.com/bintievents/" style="color:#7851A9;text-decoration:none;">Facebook</a> &nbsp; <a href="https://www.tiktok.com/@bintievents" style="color:#7851A9;text-decoration:none;">TikTok</a></p></td></tr></table></td></tr></table></body></html>`,
         attachments: [{
           filename: pdfFilename,
           content: pdfBuffer,
         }],
       });
 
-      console.log(`[INVOICE] PDF Invoice sent successfully to ${booking.email}`);
+      console.log(`[INVOICE] PDF Invoice sent successfully to ${invoiceBooking.email}`);
       return true;
     } catch (error) {
+      if (invoiceClaimed && bookingId) {
+        try {
+          await bookingRepository.releaseInvoiceDispatch(bookingId);
+        } catch (releaseError) {
+          logger.error(`Invoice release failed for booking ${bookingId}: ${releaseError.message}`);
+        }
+      }
+
       console.error('[INVOICE] Failed to send invoice:', error.message);
-      logger.error(`Invoice sending failed for booking ${booking._id}: ${error.message}`);
+      logger.error(`Invoice sending failed for booking ${bookingId || booking?._id}: ${error.message}`);
       return false;
     }
   }
@@ -647,11 +699,7 @@ class InvoiceService {
       console.log(`[INVOICE] Processing ${paidBookings.length} pending invoices...`);
 
       for (const booking of paidBookings) {
-        const success = await this.sendInvoice(booking);
-        
-        if (success) {
-          await bookingRepository.markInvoiceSent(booking.id);
-        }
+        await this.sendInvoice(booking);
       }
     } catch (error) {
       console.error('[INVOICE] Error processing pending invoices:', error.message);

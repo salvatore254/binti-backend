@@ -17,15 +17,15 @@ services:
       - key: PESAPAL_USE_SANDBOX
         value: "true"
       - key: FRONTEND_URL
-        value: https://binti-events-backend.onrender.com
+        value: https://bintievents.vercel.app
       - key: APP_URL
-        value: https://binti-events-backend.onrender.com
+        value: https://bintievents.vercel.app
       - key: BACKEND_URL
         value: https://binti-events-backend.onrender.com
       - key: DATABASE_URL
         value: ${DATABASE_URL}
       - key: DB_SSL
-        value: "false"
+        value: "true"
       - key: PESAPAL_CONSUMER_KEY
         value: ${PESAPAL_CONSUMER_KEY}
       - key: PESAPAL_CONSUMER_SECRET
@@ -66,3 +66,9 @@ services:
         value: "Binti Events <onboarding@resend.dev>"
       - key: ADMIN_EMAIL
         value: ${ADMIN_EMAIL}
+      - key: AFRICAS_TALKING_API_KEY
+        value: ${AFRICAS_TALKING_API_KEY}
+      - key: AFRICAS_TALKING_USERNAME
+        value: ${AFRICAS_TALKING_USERNAME}
+      - key: ADMIN_WHATSAPP_PHONE
+        value: ${ADMIN_WHATSAPP_PHONE}
